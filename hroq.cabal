@@ -1,0 +1,39 @@
+name:                hroq
+version:             0.1.0.0
+synopsis:            Persistent Q, where only the head block and tail block are in RAM, 
+                     so it can grow as big as the disk
+-- description:         
+homepage:            https://github.com/alanz/hroq
+license:             BSD3
+license-file:        LICENSE
+author:              Alan Zimmerman
+maintainer:          alan.zimm@gmail.com
+-- copyright:           
+category:            Database
+build-type:          Simple
+cabal-version:       >=1.8
+
+library
+  exposed-modules:    Data.Hroq 
+  -- other-modules:       
+  hs-source-dirs: . ./src
+  ghc-options:
+    -threaded
+  build-depends:       base ==4.5.*
+                     , RefSerialize
+                     , TCache
+                     , Workflow
+                     , binary
+                     , containers
+                     , network-transport-tcp
+                     , derive
+                     , distributed-process-platform
+                     , distributed-process
+
+--  ghc-options:
+--    -threaded
+
+source-repository head
+    type: git
+    location: https://github.com/alanz/hroq
+
