@@ -12,7 +12,7 @@ module Data.HroqQueue
   where
 
 import Control.Distributed.Process hiding (call)
-import Control.Distributed.Process.Node 
+import Control.Distributed.Process.Node
 import Control.Distributed.Process.Platform
 import Control.Distributed.Process.Platform.Async
 import Control.Distributed.Process.Platform.ManagedProcess hiding (runProcess)
@@ -24,6 +24,7 @@ import Network.Transport.TCP (createTransportExposeInternals, defaultTCPParamete
 -- import qualified Data.ByteString.Lazy as B
 import qualified Data.Map as Map
 import Data.Hroq
+import Data.HroqUtil
 
 --------------------------------------------------------------------------------
 -- Types                                                                      --
@@ -42,9 +43,9 @@ type QWorker = (Int) -- Keep it simple while sorting the plumbing
 
 -- operations to be exposed
 
-data Enqueue = Enqueue QName QValue              
+data Enqueue = Enqueue QName QValue
                deriving (Typeable, Show)
-data Dequeue = Dequeue QName QWorker (Maybe ProcessId) 
+data Dequeue = Dequeue QName QWorker (Maybe ProcessId)
                deriving (Typeable, Show)-- Remove one entry
 
 $(derive makeBinary ''QName)
@@ -52,28 +53,25 @@ $(derive makeBinary ''QName)
 $(derive makeBinary ''Enqueue)
 $(derive makeBinary ''Dequeue)
 
-data ProcBucket = PB Int
-data OverflowBucket = OB Int
-
 data State = QueueState
-   { qsAppInfo :: String
-   , qsCurrProcBucket :: ProcBucket
+   { qsAppInfo            :: String
+   , qsCurrProcBucket     :: ProcBucket
    , qsCurrOverflowBucket :: OverflowBucket
-   , qsTotalQueueSize :: Integer
-   , qsEnqueueCount :: Integer
-   , qsDequeueCount :: Integer
-   , qsMaxBucketSize :: Integer
-   , qsQueueName :: QName
-   , qsDoCleanup :: String -- Should be a function eventually?
-   , qsIndexList :: [ProcBucket]
+   , qsTotalQueueSize     :: Integer
+   , qsEnqueueCount       :: Integer
+   , qsDequeueCount       :: Integer
+   , qsMaxBucketSize      :: Integer
+   , qsQueueName          :: QName
+   , qsDoCleanup          :: String -- Should be a function eventually?
+   , qsIndexList          :: [QKey]
    , qsSubscriberPidDict :: String -- Must be something else in time
    }
 
 {-
-    ServerState =#eroq_queue_state  {  
+    ServerState =#eroq_queue_state  {
                                     app_info             = AppInfo,
-                                    curr_proc_bucket     = CurrProcBucket, 
-                                    curr_overflow_bucket = CurrOverflowBucket, 
+                                    curr_proc_bucket     = CurrProcBucket,
+                                    curr_overflow_bucket = CurrOverflowBucket,
                                     total_queue_size     = QueueSize,
                                     enqueue_count        = 0,
                                     dequeue_count        = 0,
@@ -179,8 +177,9 @@ handleDequeue s (Dequeue q w mp) = do {(say "dequeuing") ; reply () (s) }
 -- Actual workers, not just handlers
 
 enqueue_one_message :: QName -> QValue -> State -> Process State
-enqueue_one_message q v s = do
-  return s
+enqueue_one_message queueName v s = do
+  key <- generate_key
+  let msgRecord = QE key v
 
 {-
     AppInfo        = ServerState#eroq_queue_state.app_info,
@@ -188,26 +187,52 @@ enqueue_one_message q v s = do
     OverflowBucket = ServerState#eroq_queue_state.curr_overflow_bucket,
     MaxBucketSize  = ServerState#eroq_queue_state.max_bucket_size,
     IndexList      = ServerState#eroq_queue_state.index_list,
+-}
+  let appInfo        = qsAppInfo            s
+      procBucket     = qsCurrProcBucket     s
+      overflowBucket = qsCurrOverflowBucket s
+      maxBucketSize  = qsMaxBucketSize      s
+      indexList      = qsIndexList          s
 
+{-
     DequeueCount   = ServerState#eroq_queue_state.dequeue_count,
 
     BucketSize = mnesia:table_info(OverflowBucket, size),
+-}
+      dequeueCount = qsDequeueCount s
 
-    EnqueueWorkBucket = 
+  bucketSize <- getBucketSize overflowBucket
+
+{-
+    EnqueueWorkBucket =
     if BucketSize >= MaxBucketSize ->
         %io:format("DEBUG: enq - create new bucket size(~p) = ~w ~n", [OverflowBucket, BucketSize]),
         make_next_bucket(QueueName);
     true ->
         OverflowBucket
     end,
-    
+-}
+
+  enqueueWorkBucket <- if  (bucketSize >= maxBucketSize)
+    then do
+      say $ "DEBUG: enq - create new bucket size(" ++ (show overflowBucket) ++ ")=" ++ (show bucketSize)
+      make_next_bucket queueName
+    else do
+      return overflowBucket
+
+{-
     ok = eroq_util:retry_dirty_write(10, EnqueueWorkBucket, MsgRecord),
-    
+
     NewTotalQueuedMsg = ServerState#eroq_queue_state.total_queue_size+1,
     NewEnqueueCount   = ServerState#eroq_queue_state.enqueue_count+1,
 
     ok = eroq_log_dumper:dirty(EnqueueWorkBucket),
+-}
+  retry_dirty_write 10 enqueueWorkBucket msgRecord
+  let newTotalQueuedMsg = (qsTotalQueueSize s) + 1
+      newEnqueueCount   = (qsEnqueueCount s)   + 1
 
+{-
     NewServerState =
     if (EnqueueWorkBucket == ProcBucket) ->
 
@@ -229,7 +254,7 @@ enqueue_one_message q v s = do
 
 
     true ->
- 
+
         %A new overflow bucket (new tail of queue) was created ....
 
         if (ProcBucket =/= OverflowBucket) ->
@@ -248,10 +273,46 @@ enqueue_one_message q v s = do
                                         }
 
     end,
+-}
+  s' <- case enqueueWorkBucket of
+             -- Inserted into processing bucket (head of queue) add key to index list....
+             procBucket     -> do
+               return $ s { qsTotalQueueSize = newTotalQueuedMsg
+                          , qsEnqueueCount = newEnqueueCount
+                          , qsIndexList = indexList ++ [key]
+                          }
 
+             -- Inserted into overflow bucket (tail of the queue)...
+             overflowBucket -> do
+               return $ s { qsTotalQueueSize = newTotalQueuedMsg
+                          , qsEnqueueCount   = newEnqueueCount
+                          }
+
+             -- A new overflow bucket (new tail of queue) was created ....
+             _ -> do
+               case procBucket of
+                 overflowBucket -> return ()
+                 _ ->
+                      -- But only swap the previous overflow bucket
+                      -- (previous tail) out of ram if it is not the
+                      -- head of the queue ....
+                      change_table_copy_type overflowBucket DiscOnlyCopies
+
+
+               return $ s { qsCurrOverflowBucket = enqueueWorkBucket
+                          , qsTotalQueueSize     = newTotalQueuedMsg
+                          , qsEnqueueCount       = newEnqueueCount
+                          }
+
+{-
     catch(eroq_stats_gatherer:publish_queue_stats(QueueName, {AppInfo, NewTotalQueuedMsg, NewEnqueueCount, DequeueCount})),
 
     {ok, NewServerState}.
 
 -}
+  return s'
 
+-- ---------------------------------------------------------------------
+
+
+make_next_bucket queueName = undefined

@@ -2,9 +2,14 @@
 
 module Data.Hroq
   (
-    QValue(..)
+    QKey(..)
+  , QValue(..)
   , QEntry(..)
   , QName(..)
+ 
+  -- *bucket types
+  , ProcBucket(..)
+  , OverflowBucket(..)
   )
   where
 
@@ -24,9 +29,18 @@ import qualified Data.Map as Map
 data QName = QN String
              deriving (Typeable,Show)
 
+data QKey = QK Int
+            deriving (Typeable,Show,Read)
+
+instance Binary QKey where
+  put (QK i) = put i
+  get = do
+    i <- get
+    return $ QK i
+
 type QValue = Map.Map String String
 -- type QValue = String
-data QEntry = QE Integer -- ^Id, not sure if we need this
+data QEntry = QE QKey    -- ^Id
                  QValue  -- ^payload
               deriving (Typeable,Read,Show)
 
@@ -58,3 +72,9 @@ instance Serialize QEntry where
                                     },
 
 -}
+
+data ProcBucket = PB Int
+     deriving (Show)
+
+data OverflowBucket = OB Int
+     deriving (Show)
