@@ -30,6 +30,29 @@ library
                      , distributed-process-platform
                      , distributed-process
 
+executable hroq
+  main-is:             main.hs
+  Hs-Source-Dirs:      . src
+  ghc-options:
+    -threaded
+
+  -- other-modules:       
+  build-depends:       base ==4.5.*
+                       , distributed-process
+                       , distributed-process-platform
+                       , distributed-process-simplelocalnet
+                       , binary
+                       , bytestring
+                       , containers
+                       , derive
+                       , directory
+                       , ghc-prim
+                       , network-transport-tcp
+                       , random
+                       , ekg
+                       , HTTP
+                       , snap-core
+
 --  ghc-options:
 --    -threaded
 

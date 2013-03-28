@@ -7,7 +7,7 @@ module Data.HroqQueue
     enqueue
   , dequeue
 
-  , startQueues
+  , startQueue
   )
   where
 
@@ -19,11 +19,17 @@ import Control.Distributed.Process.Platform.ManagedProcess hiding (runProcess)
 import Control.Distributed.Process.Platform.Time
 import Data.Binary
 import Data.DeriveTH
+import Data.List
 import Data.Typeable (Typeable)
 import Network.Transport.TCP (createTransportExposeInternals, defaultTCPParameters)
 -- import qualified Data.ByteString.Lazy as B
 import qualified Data.Map as Map
+import qualified Data.Set as Set
 import Data.Hroq
+import Data.HroqGroups
+import Data.HroqMnesia
+import Data.HroqQueueMeta
+import Data.HroqStatsGatherer
 import Data.HroqUtil
 
 --------------------------------------------------------------------------------
@@ -53,18 +59,20 @@ $(derive makeBinary ''QName)
 $(derive makeBinary ''Enqueue)
 $(derive makeBinary ''Dequeue)
 
+type CleanupFunc = String
+
 data State = QueueState
    { qsAppInfo            :: String
-   , qsCurrProcBucket     :: ProcBucket
-   , qsCurrOverflowBucket :: OverflowBucket
+   , qsCurrProcBucket     :: TableName
+   , qsCurrOverflowBucket :: TableName
    , qsTotalQueueSize     :: Integer
    , qsEnqueueCount       :: Integer
    , qsDequeueCount       :: Integer
    , qsMaxBucketSize      :: Integer
    , qsQueueName          :: QName
-   , qsDoCleanup          :: String -- Should be a function eventually?
+   , qsDoCleanup          :: CleanupFunc -- Should be a function eventually?
    , qsIndexList          :: [QKey]
-   , qsSubscriberPidDict :: String -- Must be something else in time
+   , qsSubscriberPidDict  :: Set.Set ProcessId
    }
 
 {-
@@ -85,6 +93,10 @@ data State = QueueState
 
 -- ---------------------------------------------------------------------
 
+-- -define(MAX_BUCKET_SIZE,  eroq_util:app_param(max_bucket_size, 5000)).
+maxBucketSize = 5000
+
+-- ---------------------------------------------------------------------
 {-
 % Interface exports
 -export([
@@ -127,12 +139,200 @@ dequeue sid q w mp = call sid (Dequeue q w mp)
 -- TODO: erlang version starts a Q gen server per Q, uses the QName to
 -- lookup in the global process dict where it is.
 -- | Start a Queue server
-startQueues :: State -> Process ProcessId
-startQueues startState =
+startQueue :: (QName,String,CleanupFunc) -> Process ProcessId
+startQueue initParams =
   let server = serverDefinition
-  in spawnLocal $ start startState init' server >> return ()
-  where init' :: InitHandler State State
-        init' s = return $ InitOk s Infinity
+  in spawnLocal $ start initParams initFunc server >> return ()
+
+-- -----------------------------------------------------------------------------
+
+-- |Init callback
+initFunc :: InitHandler (QName,String,CleanupFunc) State
+initFunc (queueName,appInfo,doCleanup) = do
+
+    say $ "HroqQueue:initFunc started"
+
+    -- process_flag(trap_exit, true),
+
+    -- ok = mnesia:wait_for_tables([eroq_queue_meta_table], infinity),
+    wait_for_tables [eroq_queue_meta_table] Infinity
+    say $ "HroqQueue:initFunc 1"
+
+    -- Run through the control table & delete all empty buckets ...
+    -- {QueueSize, Buckets} = check_buckets(QueueName),
+    (queueSize,buckets) <- check_buckets queueName
+    say $ "HroqQueue:initFunc 2:(queueSize,buckets)=" ++ (show (queueSize,buckets))
+
+    -- ok = mnesia:wait_for_tables(Buckets, infinity),
+    wait_for_tables buckets Infinity
+    say $ "HroqQueue:initFunc 3"
+
+    -- [CurrProcBucket | _] = Buckets,
+    -- CurrOverflowBucket   = lists:last(Buckets),
+    let currProcBucket     = head buckets
+        currOverflowBucket = last buckets
+        -- NOTE: these two buckets may be the same
+
+{-
+    case CurrProcBucket of
+    CurrOverflowBucket ->
+        ok = change_table_copy_type(CurrProcBucket, disc_copies);
+    _ ->
+        ok = change_table_copy_type(CurrProcBucket,     disc_copies),
+        ok = change_table_copy_type(CurrOverflowBucket, disc_copies)
+    end,
+-}
+    case currProcBucket of
+      currOverflowBucket -> do
+        change_table_copy_type currProcBucket DiscCopies
+      _ -> do
+        change_table_copy_type currProcBucket     DiscCopies
+        change_table_copy_type currOverflowBucket DiscCopies
+    say $ "HroqQueue:initFunc 4"
+
+
+    allKeys <- dirty_all_keys currProcBucket
+    say $ "HroqQueue:initFunc 5"
+
+{-
+    ServerState =#eroq_queue_state  {  
+                                    app_info             = AppInfo,
+                                    curr_proc_bucket     = CurrProcBucket, 
+                                    curr_overflow_bucket = CurrOverflowBucket, 
+                                    total_queue_size     = QueueSize,
+                                    enqueue_count        = 0,
+                                    dequeue_count        = 0,
+                                    max_bucket_size      = ?MAX_BUCKET_SIZE,
+                                    queue_name           = QueueName,
+                                    do_cleanup           = DoCleanup,
+                                    index_list           = lists:sort(mnesia:dirty_all_keys(CurrProcBucket)),
+                                    subscriber_pid_dict  = dict:new()
+                                    },
+-}
+    let s = QueueState
+             { qsAppInfo            = appInfo
+             , qsCurrProcBucket     = currProcBucket
+             , qsCurrOverflowBucket = currOverflowBucket
+             , qsTotalQueueSize     = queueSize
+             , qsEnqueueCount       = 0
+             , qsDequeueCount       = 0
+             , qsMaxBucketSize      = maxBucketSize
+             , qsQueueName          = queueName
+             , qsDoCleanup          = doCleanup
+             , qsIndexList          = sort allKeys
+             , qsSubscriberPidDict  = Set.empty
+             }
+
+
+    -- eroq_groups:join(QueueName, ?MODULE),                
+    join queueName "HroqQueue"
+    say $ "HroqQueue:initFunc 6"
+
+    -- catch(eroq_stats_gatherer:publish_queue_stats(QueueName, {AppInfo, QueueSize, 0, 0})),
+    publish_queue_stats queueName (appInfo, queueSize, 0, 0)
+
+    say $ "HroqQueue:initFunc ending"
+
+    return $ InitOk s Infinity
+
+eroq_queue_meta_table :: TableName
+eroq_queue_meta_table = TN "eroq_queue_meta_table"
+
+-- ---------------------------------------------------------------------
+{-
+check_buckets(QueueName) ->
+    case eroq_queue_meta:all_buckets(QueueName) of
+    {ok, [B]} ->
+        case catch(mnesia:table_info(B, storage_type)) of
+        disc_copies ->
+            {mnesia:table_info(B, size), [B]};
+        disc_only_copies ->
+            {mnesia:table_info(B, size), [B]};
+        _ ->
+            %Table does not exist ....
+            NB = make_next_bucket(QueueName),
+            {0, [NB]}
+        end;
+    {ok, List} ->
+        Size = traverse_check_buckets(QueueName, List, 0),
+        case eroq_queue_meta:all_buckets(QueueName) of
+        {ok, []} ->
+            {0, [make_next_bucket(QueueName)]};
+        {ok, CBuckets} ->
+            {Size, CBuckets}
+        end
+    end.
+-}
+check_buckets :: QName -> Process (Integer,[TableName])
+check_buckets queueName = do
+  say $ "check_buckets:" ++ (show queueName)
+  mab <- meta_all_buckets queueName
+  case mab of
+    [b] -> do
+      TIStorageType storage <- table_info b TableInfoStorageType
+      case storage of
+        DiscCopies -> do
+            (TISize size) <- table_info b TableInfoSize
+            return (size,[b])
+        DiscOnlyCopies -> do
+            (TISize size) <- table_info b TableInfoSize
+            return (size,[b])
+        StorageNone -> do
+            nb <- make_next_bucket queueName
+            return (0,[nb])
+    bs -> do
+      size <- traverse_check_buckets queueName bs 0
+      mab' <- meta_all_buckets queueName
+      case mab' of
+        [] -> do
+          b <- make_next_bucket queueName
+          return (0,[b])
+        cbuckets -> do
+          return (size,cbuckets)
+{-
+    {ok, List} ->
+        Size = traverse_check_buckets(QueueName, List, 0),
+        case eroq_queue_meta:all_buckets(QueueName) of
+        {ok, []} ->
+            {0, [make_next_bucket(QueueName)]};
+        {ok, CBuckets} ->
+            {Size, CBuckets}
+        end
+    end.
+-}
+
+  return (0,[])
+-- ---------------------------------------------------------------------
+{-
+traverse_check_buckets(QueueName, [B | T], Size)->
+    S = mnesia:table_info(B, size),
+    if (S == 0) ->
+        case mnesia:delete_table(B) of
+        {atomic, ok} ->
+            ok;
+        {aborted,{no_exists,B}} ->
+            ok
+        end,
+        {ok, _} = eroq_queue_meta:del_bucket(QueueName, B),
+        traverse_check_buckets(QueueName, T, Size);
+    true ->
+        traverse_check_buckets(QueueName, T, Size + S)
+    end;
+traverse_check_buckets(_, [], Size)-> Size.
+-}
+
+traverse_check_buckets :: QName -> [TableName] -> Integer -> Process Integer
+traverse_check_buckets queueName (b:t) size = do
+  TISize s <- table_info b TableInfoSize
+  case s of
+    0 -> do
+          delete_table b
+          meta_del_bucket queueName b
+          return ()
+    _ -> return ()
+  traverse_check_buckets queueName t (size + s)
+traverse_check_buckets _ [] size = return size
+
 
 --------------------------------------------------------------------------------
 -- Implementation                                                             --
@@ -155,6 +355,7 @@ serverDefinition = defaultProcess {
 -- Note: the handlers match on type signature
 handleEnqueue :: State -> Enqueue -> Process (ProcessReply State ())
 handleEnqueue s (Enqueue q v) = do
+    say $ "enqueue called with:" ++ (show (q,v))
     s' <- enqueue_one_message q v s
     reply () s'
 {-
@@ -201,7 +402,7 @@ enqueue_one_message queueName v s = do
 -}
       dequeueCount = qsDequeueCount s
 
-  bucketSize <- getBucketSize overflowBucket
+  TISize bucketSize <- table_info overflowBucket TableInfoSize
 
 {-
     EnqueueWorkBucket =
@@ -212,7 +413,6 @@ enqueue_one_message queueName v s = do
         OverflowBucket
     end,
 -}
-
   enqueueWorkBucket <- if  (bucketSize >= maxBucketSize)
     then do
       say $ "DEBUG: enq - create new bucket size(" ++ (show overflowBucket) ++ ")=" ++ (show bucketSize)
@@ -308,11 +508,40 @@ enqueue_one_message queueName v s = do
     catch(eroq_stats_gatherer:publish_queue_stats(QueueName, {AppInfo, NewTotalQueuedMsg, NewEnqueueCount, DequeueCount})),
 
     {ok, NewServerState}.
-
 -}
+  publish_queue_stats queueName (appInfo,newTotalQueuedMsg,newEnqueueCount,dequeueCount)
+
   return s'
 
 -- ---------------------------------------------------------------------
+{-
+build_next_bucket_name(QueueName) ->
+    Key = eroq_util:generate_key(),
+    KeyStr = lists:flatten(io_lib:format("~18.18.0w", [Key])),
+    list_to_atom(atom_to_list(QueueName)++"_"++KeyStr).
+-}
+build_next_bucket_name :: QName -> Process TableName
+build_next_bucket_name queueName = do
+    key <- generate_key
+    let queueName' = ((show queueName) ++ "_" ++ (show key))
+    return $ TN queueName'
+
+-- ---------------------------------------------------------------------
+
+{-
+make_next_bucket(QueueName) ->
+    NewBucket = build_next_bucket_name(QueueName),
+    {ok, _} = eroq_queue_meta:add_bucket(QueueName, NewBucket),
+    ok = create_table(disc_copies, NewBucket),
+    NewBucket.
+-}
+
+make_next_bucket :: QName -> Process TableName
+make_next_bucket queueName = do
+  newBucket <- build_next_bucket_name queueName
+  meta_add_bucket queueName newBucket
+  create_table DiscCopies newBucket
+  return newBucket
 
 
-make_next_bucket queueName = undefined
+-- ---------------------------------------------------------------------

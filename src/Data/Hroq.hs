@@ -29,8 +29,8 @@ import qualified Data.Map as Map
 data QName = QN String
              deriving (Typeable,Show)
 
-data QKey = QK Int
-            deriving (Typeable,Show,Read)
+data QKey = QK Integer
+            deriving (Typeable,Show,Read,Eq,Ord)
 
 instance Binary QKey where
   put (QK i) = put i
@@ -73,8 +73,8 @@ instance Serialize QEntry where
 
 -}
 
-data ProcBucket = PB Int
+data ProcBucket = PB QName
      deriving (Show)
 
-data OverflowBucket = OB Int
+data OverflowBucket = OB QName
      deriving (Show)
