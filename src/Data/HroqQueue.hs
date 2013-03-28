@@ -235,8 +235,6 @@ initFunc (queueName,appInfo,doCleanup) = do
 
     return $ InitOk s Infinity
 
-eroq_queue_meta_table :: TableName
-eroq_queue_meta_table = TN "eroq_queue_meta_table"
 
 -- ---------------------------------------------------------------------
 {-

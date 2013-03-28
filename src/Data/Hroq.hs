@@ -18,7 +18,6 @@ import Control.Workflow
 import Data.Binary
 import Data.Maybe
 import Data.Persistent.Collection
-import Data.Persistent.Collection
 import Data.RefSerialize
 import Data.TCache
 import Data.Typeable

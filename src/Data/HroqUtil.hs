@@ -2,6 +2,7 @@ module Data.HroqUtil
   (
     generate_key
   , retry_dirty_write
+  , retry_dirty_read
   )
   where
 
@@ -53,5 +54,34 @@ retry_dirty_write n tableName record = do
       say $ "retry_dirty_write:" ++ (show (tableName, n, record, e))
       liftIO $ threadDelay (100*1000) -- Haskell sleep takes us
       retry_dirty_write (n-1) tableName record
+
+-- ---------------------------------------------------------------------
+{-
+retry_dirty_read(0, _, _) ->
+    error;
+retry_dirty_read(N, TableName, Key) ->
+    case catch(mnesia:dirty_read(TableName, Key)) of
+    {'EXIT', Reason} ->
+        ?warn({dirty_read, TableName, N, Key, Reason}),
+        retry_dirty_read(N-1, TableName, Key);
+    Data ->
+        {ok, Data}
+    end.
+-}
+
+retry_dirty_read :: Int -> TableName -> QKey -> Process [QEntry]
+retry_dirty_read 0 tableName key = do
+  say $ "retry_dirty_read:giving up" ++ (show (0,tableName,key))
+  return [] -- TODO: throw an exception, blow up, etc
+retry_dirty_read n tableName key = do
+  say $ "retry_dirty_read:undefined:" ++ (show (n,tableName,key))
+  catch op handler
+  where
+    op = dirty_read tableName key
+    handler :: SomeException -> Process [QEntry]
+    handler e = do
+      say $ "retry_dirty_read:exception" ++ (show (n,tableName,key,e))
+      liftIO $ threadDelay (100*1000) -- Haskell sleep takes us
+      retry_dirty_read (n-1) tableName key
 
 -- ---------------------------------------------------------------------

@@ -6,6 +6,7 @@ module Data.HroqMnesia
   , create_table
   , delete_table
   , dirty_write
+  , dirty_read
   , dirty_all_keys
   , wait_for_tables
 
@@ -68,12 +69,20 @@ dirty_write tableName record = do
 
 -- ---------------------------------------------------------------------
 
+dirty_read :: TableName -> QKey -> Process [QEntry]
+dirty_read tableName key = do
+  say $ "dirty_read:undefined:" ++ (show (tableName,key))
+  return []
+
+-- ---------------------------------------------------------------------
+
 dirty_all_keys :: TableName -> Process [QKey]
 dirty_all_keys tableName = do
   say "dirty_all_keys undefined"
   return []
 
 -- ---------------------------------------------------------------------
+
 wait_for_tables :: [TableName] -> Delay -> Process ()
 wait_for_tables tables maxWait = do
   say $ "wait_for_tables undefined"

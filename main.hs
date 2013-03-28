@@ -67,8 +67,6 @@ startLocalNode = do
   return node
   
 
-
-
 -- ---------------------------------------------------------------------
 
 -- | Provide an identification of a specific Q
