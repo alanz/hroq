@@ -287,17 +287,6 @@ check_buckets queueName = do
           return (0,[b])
         cbuckets -> do
           return (size,cbuckets)
-{-
-    {ok, List} ->
-        Size = traverse_check_buckets(QueueName, List, 0),
-        case eroq_queue_meta:all_buckets(QueueName) of
-        {ok, []} ->
-            {0, [make_next_bucket(QueueName)]};
-        {ok, CBuckets} ->
-            {Size, CBuckets}
-        end
-    end.
--}
 
   return (0,[])
 -- ---------------------------------------------------------------------

@@ -52,6 +52,7 @@ executable hroq
                        , ekg
                        , HTTP
                        , snap-core
+                       , time
 
 --  ghc-options:
 --    -threaded

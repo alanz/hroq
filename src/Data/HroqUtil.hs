@@ -22,13 +22,19 @@ import Network.Transport.TCP (createTransportExposeInternals, defaultTCPParamete
 import qualified Data.Map as Map
 import Data.Hroq
 import Data.HroqMnesia
+import Data.TCache
+import Data.Persistent.Collection
+import Data.TCache.Defs
+import Data.RefSerialize
+import Data.Time.Clock
 
 -- ---------------------------------------------------------------------
 
 generate_key :: Process QKey
 generate_key = do
-  say "generate_key undefined"
-  error "foo"
+  k <- liftIO $ getCurrentTime
+  say $ "generate_key:" ++ (show k)
+  return $ QK (show k)
 
 -- ---------------------------------------------------------------------
 {-
@@ -44,7 +50,7 @@ retry_dirty_write(N, TableName, Record) ->
         retry_dirty_write(N-1, TableName, Record)
     end.
 -}
-retry_dirty_write :: Int -> TableName -> QEntry -> Process ()
+-- retry_dirty_write :: Int -> TableName -> QEntry -> Process ()
 retry_dirty_write n tableName record = do
   catch op handler
   where
@@ -68,20 +74,25 @@ retry_dirty_read(N, TableName, Key) ->
         {ok, Data}
     end.
 -}
-
-retry_dirty_read :: Int -> TableName -> QKey -> Process [QEntry]
+{-
+retry_dirty_read :: (Show a,Indexable a, Typeable b) -- , Serialize b) 
+  => Int -> TableName -> a -> Process [b]
 retry_dirty_read 0 tableName key = do
   say $ "retry_dirty_read:giving up" ++ (show (0,tableName,key))
   return [] -- TODO: throw an exception, blow up, etc
 retry_dirty_read n tableName key = do
-  say $ "retry_dirty_read:undefined:" ++ (show (n,tableName,key))
+  say $ "retry_dirty_read:" ++ (show (n,tableName,key))
   catch op handler
   where
-    op = dirty_read tableName key
-    handler :: SomeException -> Process [QEntry]
+    op = dirty_read tableName key :: [b]
+    handler :: (Typeable b) => SomeException -> Process [b]
     handler e = do
       say $ "retry_dirty_read:exception" ++ (show (n,tableName,key,e))
       liftIO $ threadDelay (100*1000) -- Haskell sleep takes us
-      retry_dirty_read (n-1) tableName key
+      retry_dirty_read (n - 1) tableName key
+-}
+retry_dirty_read n tableName key = do
+  say $ "retry_dirty_read:" ++ (show (n,tableName,key))
+  dirty_read tableName key
 
 -- ---------------------------------------------------------------------

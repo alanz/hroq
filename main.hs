@@ -20,6 +20,7 @@ import Data.TCache
 import Data.Typeable (Typeable)
 import Network.Transport.TCP (createTransportExposeInternals, defaultTCPParameters)
 import qualified Data.Map as Map
+import qualified Data.HroqApp as App
 
 -- https://github.com/tibbe/ekg
 import qualified System.Remote.Monitoring as EKG
@@ -40,6 +41,8 @@ main = do
 
 worker :: Process ()
 worker = do
+  App.start_app
+
   let qName = QN "queue a"
 
   qSid <- startQueue (qName,"appinfo","blah")
@@ -60,7 +63,7 @@ worker = do
 startLocalNode :: IO LocalNode
 startLocalNode = do
     -- [role, host, port] <- getArgs
-  let [role, host, port] = ["foo","127.0.0.1", "10506"]
+  let [role, host, port] = ["foo","127.0.0.1", "10507"]
   -- Right transport <- createTransport host port defaultTCPParameters
   Right (transport,_internals) <- createTransportExposeInternals host port defaultTCPParameters
   node <- newLocalNode transport initRemoteTable
@@ -77,8 +80,8 @@ qval str = Map.fromList [(str,str)]
 
 qmain = do
   syncWrite Synchronous
-  push qtest (QE (QK 1) (qval "foo"))
-  push qtest (QE (QK 2) (qval "bar"))
+  push qtest (QE (QK "1") (qval "foo"))
+  push qtest (QE (QK "2") (qval "bar"))
   syncCache
 
 mm = do

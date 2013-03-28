@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveDataTypeable #-}
 module Data.HroqMnesia
   (
     TableStorage(..)
@@ -24,14 +25,15 @@ import Control.Distributed.Process.Platform.ManagedProcess hiding (runProcess)
 import Control.Distributed.Process.Platform.Time
 import Data.Binary
 import Data.DeriveTH
-import Data.Typeable (Typeable)
-import Network.Transport.TCP (createTransportExposeInternals, defaultTCPParameters)
-import qualified Data.Map as Map
 import Data.Hroq
 import Data.Persistent.Collection
 import Data.RefSerialize
 import Data.TCache
-import Data.Typeable
+import Data.TCache.Defs
+import Data.TCache.IResource
+import Data.Typeable (Typeable)
+import Network.Transport.TCP (createTransportExposeInternals, defaultTCPParameters)
+import qualified Data.Map as Map
 
 
 data TableStorage = DiscOnlyCopies
@@ -40,7 +42,7 @@ data TableStorage = DiscOnlyCopies
                   deriving (Show)
 
 data TableName = TN String
-                 deriving (Show)
+                 deriving (Show,Read,Typeable)
 
 change_table_copy_type :: TableName -> TableStorage -> Process ()
 change_table_copy_type bucket storageType = do
@@ -59,20 +61,28 @@ delete_table name = do
   say "create_table undefined"
 
 -- ---------------------------------------------------------------------
+
 -- |Write the value to a TCache Q
-dirty_write :: TableName -> QEntry -> Process ()
+
+-- dirty_write :: TableName -> QEntry -> Process ()
+dirty_write :: (Show t, Show a, Typeable a, IResource a) 
+  => t -> a -> Process ()
 dirty_write tableName record = do
-  let qname = getQueue tableName
-  liftIO $ push qname record
-  liftIO $ syncCache
+  say $ "dirty_write:" ++ (show (tableName,record))
+  let nop _ = []
+  liftIO $ withResources [record] nop
   return ()
+
 
 -- ---------------------------------------------------------------------
 
-dirty_read :: TableName -> QKey -> Process [QEntry]
-dirty_read tableName key = do
-  say $ "dirty_read:undefined:" ++ (show (tableName,key))
-  return []
+dirty_read ::
+  (Show t, Show a, Typeable a, IResource a) =>
+  t -> a -> Process (Maybe a)
+dirty_read tableName keyVal = do
+  say $ "dirty_read:" ++ (show (tableName,keyVal))
+  res <- liftIO $ getResource keyVal
+  return res 
 
 -- ---------------------------------------------------------------------
 
@@ -110,12 +120,12 @@ table_info tableName infoReq = do
 getBucketSize :: TableName -> Process TableInfoRsp
 getBucketSize tableName = do
   say "getBucketSize undefined"
-  error "foo"
+  return $ TISize 0
 
 getStorageType :: TableName -> Process TableInfoRsp
 getStorageType tableName = do
   say "getStorageType undefined"
-  error "foo"
+  return $ TIStorageType StorageNone
 
 -- ---------------------------------------------------------------------
 -- TCache specific functions used here

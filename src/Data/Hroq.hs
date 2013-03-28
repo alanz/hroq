@@ -6,6 +6,9 @@ module Data.Hroq
   , QValue(..)
   , QEntry(..)
   , QName(..)
+  , TimeStamp
+  , getTimeStamp
+  , nullTimeStamp
  
   -- *bucket types
   , ProcBucket(..)
@@ -14,21 +17,38 @@ module Data.Hroq
   where
 
 import Control.Concurrent
+import Control.Distributed.Process hiding (call)
+import Control.Distributed.Process.Node
+import Control.Distributed.Process.Platform
+import Control.Distributed.Process.Platform.Async
+import Control.Distributed.Process.Platform.ManagedProcess hiding (runProcess)
+import Control.Distributed.Process.Platform.Time
 import Control.Workflow
 import Data.Binary
 import Data.Maybe
 import Data.Persistent.Collection
 import Data.RefSerialize
 import Data.TCache
+import Data.TCache.Defs
+import Data.Time.Clock
 import Data.Typeable
+import qualified Data.ByteString.Lazy.Char8 as C8
 import qualified Data.Map as Map
 
 -- ---------------------------------------------------------------------
 
 data QName = QN String
-             deriving (Typeable,Show)
+             deriving (Typeable,Show,Read)
 
-data QKey = QK Integer
+instance Indexable QName where
+  key = show 
+
+instance Serializable QName where
+  serialize s  = C8.pack $ show s
+  deserialize = read. C8.unpack
+  -- setPersist =
+
+data QKey = QK String
             deriving (Typeable,Show,Read,Eq,Ord)
 
 instance Binary QKey where
@@ -37,8 +57,8 @@ instance Binary QKey where
     i <- get
     return $ QK i
 
+
 type QValue = Map.Map String String
--- type QValue = String
 data QEntry = QE QKey    -- ^Id
                  QValue  -- ^payload
               deriving (Typeable,Read,Show)
@@ -54,26 +74,32 @@ instance Serialize QEntry where
   showp = showpBinary
   readp = readpBinary
 
-{-
+instance Indexable QEntry where
+  key (QE qk _) = show qk
 
-    ServerState =#eroq_queue_state  {  
-                                    app_info             = AppInfo,
-                                    curr_proc_bucket     = CurrProcBucket, 
-                                    curr_overflow_bucket = CurrOverflowBucket, 
-                                    total_queue_size     = QueueSize,
-                                    enqueue_count        = 0,
-                                    dequeue_count        = 0,
-                                    max_bucket_size      = ?MAX_BUCKET_SIZE,
-                                    queue_name           = QueueName,
-                                    do_cleanup           = DoCleanup,
-                                    index_list           = lists:sort(mnesia:dirty_all_keys(CurrProcBucket)),
-                                    subscriber_pid_dict  = dict:new()
-                                    },
+instance Serializable QEntry where
+   serialize s  = C8.pack $ show s
+   deserialize = read. C8.unpack
 
--}
+
 
 data ProcBucket = PB QName
      deriving (Show)
 
 data OverflowBucket = OB QName
      deriving (Show)
+
+
+data TimeStamp = TS String
+                 deriving (Show,Read)
+
+-- ---------------------------------------------------------------------
+
+getTimeStamp :: Process TimeStamp
+getTimeStamp = do
+  t <- liftIO $ getCurrentTime
+  return $ TS (show t)
+
+nullTimeStamp :: TimeStamp
+nullTimeStamp = TS "*notset*"
+
