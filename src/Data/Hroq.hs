@@ -7,6 +7,7 @@ module Data.Hroq
   , QEntry(..)
   , QName(..)
   , TimeStamp
+  , ioGetTimeStamp
   , getTimeStamp
   , nullTimeStamp
  
@@ -82,7 +83,6 @@ instance Serializable QEntry where
    deserialize = read. C8.unpack
 
 
-
 data ProcBucket = PB QName
      deriving (Show)
 
@@ -95,10 +95,15 @@ data TimeStamp = TS String
 
 -- ---------------------------------------------------------------------
 
+ioGetTimeStamp :: IO TimeStamp
+ioGetTimeStamp = do
+  t <- getCurrentTime
+  return $ TS (show t)
+
 getTimeStamp :: Process TimeStamp
 getTimeStamp = do
-  t <- liftIO $ getCurrentTime
-  return $ TS (show t)
+  ts <- liftIO $ ioGetTimeStamp
+  return ts
 
 nullTimeStamp :: TimeStamp
 nullTimeStamp = TS "*notset*"

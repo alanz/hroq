@@ -265,6 +265,7 @@ check_buckets :: QName -> Process (Integer,[TableName])
 check_buckets queueName = do
   say $ "check_buckets:" ++ (show queueName)
   mab <- meta_all_buckets queueName
+  say $ " check_buckets:mab=" ++ (show mab)
   case mab of
     [b] -> do
       TIStorageType storage <- table_info b TableInfoStorageType
@@ -288,7 +289,6 @@ check_buckets queueName = do
         cbuckets -> do
           return (size,cbuckets)
 
-  return (0,[])
 -- ---------------------------------------------------------------------
 {-
 traverse_check_buckets(QueueName, [B | T], Size)->

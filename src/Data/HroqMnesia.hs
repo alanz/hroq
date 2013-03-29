@@ -62,34 +62,41 @@ delete_table name = do
 
 -- ---------------------------------------------------------------------
 
--- |Write the value to a TCache Q
+-- |Write the value to a TCache Q 
+-- (as a new entry, no check for prior existence/overwrite)
 
--- dirty_write :: TableName -> QEntry -> Process ()
-dirty_write :: (Show t, Show a, Typeable a, IResource a) 
-  => t -> a -> Process ()
+dirty_write :: (Show a, Show b, Typeable b, Serialize b, Indexable b) 
+   => a -> b -> Process ()
 dirty_write tableName record = do
   say $ "dirty_write:" ++ (show (tableName,record))
-  let nop _ = []
-  liftIO $ withResources [record] nop
+  let qid = getQid tableName
+  liftIO $ deleteElem qid record
+  liftIO $ push qid record
+  liftIO $ syncCache
   return ()
-
 
 -- ---------------------------------------------------------------------
 
-dirty_read ::
-  (Show t, Show a, Typeable a, IResource a) =>
-  t -> a -> Process (Maybe a)
+dirty_read :: 
+  (Show a, 
+   Show b, Indexable b,
+   Typeable c, Serialize c, Indexable c) 
+  => a -> b -> Process (Maybe c)
 dirty_read tableName keyVal = do
   say $ "dirty_read:" ++ (show (tableName,keyVal))
-  res <- liftIO $ getResource keyVal
+  let qid = getQid tableName
+  res <- liftIO $ pickElem qid (key keyVal)
   return res 
 
 -- ---------------------------------------------------------------------
 
 dirty_all_keys :: TableName -> Process [QKey]
 dirty_all_keys tableName = do
-  say "dirty_all_keys undefined"
-  return []
+  say $ "dirty_all_keys:" ++ (show tableName)
+  let qid = getQid tableName
+  res <- liftIO $ pickAll qid
+  say $ "  dirty_all_keys:res=" ++ (show res)
+  return res
 
 -- ---------------------------------------------------------------------
 
@@ -134,4 +141,6 @@ getStorageType tableName = do
 getQueue :: TableName -> RefQueue QEntry
 getQueue (TN name) = getQRef name
 
+getQid :: (Show a, Typeable b, Serialize b) => a -> RefQueue b
+getQid x = getQRef $ show x
 
