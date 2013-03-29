@@ -43,14 +43,18 @@ worker :: Process ()
 worker = do
   App.start_app
 
-  let qName = QN "queue a"
+  let qNameA = QN "queue a"
+  let qNameB = QN "queue b"
 
-  qSid <- startQueue (qName,"appinfo","blah")
-  say $ "queue started:" ++ (show qSid)
+  qSida <- startQueue (qNameA,"appinfo","blah")
+  say $ "queue started:" ++ (show qSida)
+
+  qSidb <- startQueue (qNameB,"appinfo","blah")
+  say $ "queue started:" ++ (show qSidb)
 
   say "worker started all"
 
-  enqueue qSid qName (qval "foo")
+  enqueue qSida qNameA (qval "foo")
   say "enqueue done"
 
 
@@ -63,7 +67,7 @@ worker = do
 startLocalNode :: IO LocalNode
 startLocalNode = do
     -- [role, host, port] <- getArgs
-  let [role, host, port] = ["foo","127.0.0.1", "10503"]
+  let [role, host, port] = ["foo","127.0.0.1", "10505"]
   -- Right transport <- createTransport host port defaultTCPParameters
   Right (transport,_internals) <- createTransportExposeInternals host port defaultTCPParameters
   node <- newLocalNode transport initRemoteTable

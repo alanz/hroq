@@ -309,6 +309,7 @@ traverse_check_buckets(_, [], Size)-> Size.
 -}
 
 traverse_check_buckets :: QName -> [TableName] -> Integer -> Process Integer
+traverse_check_buckets _            [] size = return size
 traverse_check_buckets queueName (b:t) size = do
   TISize s <- table_info b TableInfoSize
   case s of
@@ -318,7 +319,6 @@ traverse_check_buckets queueName (b:t) size = do
           return ()
     _ -> return ()
   traverse_check_buckets queueName t (size + s)
-traverse_check_buckets _ [] size = return size
 
 
 --------------------------------------------------------------------------------
@@ -415,7 +415,7 @@ enqueue_one_message queueName v s = do
 
     ok = eroq_log_dumper:dirty(EnqueueWorkBucket),
 -}
-  retry_dirty_write 10 enqueueWorkBucket msgRecord
+  retry_dirty_write (10::Integer) enqueueWorkBucket msgRecord
   let newTotalQueuedMsg = (qsTotalQueueSize s) + 1
       newEnqueueCount   = (qsEnqueueCount s)   + 1
 
@@ -508,9 +508,9 @@ build_next_bucket_name(QueueName) ->
     list_to_atom(atom_to_list(QueueName)++"_"++KeyStr).
 -}
 build_next_bucket_name :: QName -> Process TableName
-build_next_bucket_name queueName = do
-    key <- generate_key
-    let queueName' = ((show queueName) ++ "_" ++ (show key))
+build_next_bucket_name (QN queueName) = do
+    (QK key) <- generate_key
+    let queueName' = (queueName ++ "_" ++ key)
     return $ TN queueName'
 
 -- ---------------------------------------------------------------------

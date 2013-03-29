@@ -3,6 +3,7 @@ module Data.HroqMnesia
   (
     TableStorage(..)
   , TableName(..)
+  -- , Storable(..)
   , change_table_copy_type
   , create_table
   , delete_table
@@ -44,6 +45,15 @@ data TableStorage = DiscOnlyCopies
 data TableName = TN String
                  deriving (Show,Read,Typeable)
 
+-- ---------------------------------------------------------------------
+
+{-
+data SKey = SK String
+
+data Storable a = Store SKey a
+                 deriving (Show,Read,Typeable)
+-}
+
 change_table_copy_type :: TableName -> TableStorage -> Process ()
 change_table_copy_type bucket storageType = do
   say $ "change_table_copy_type undefined for:" ++ (show (bucket,storageType))
@@ -62,31 +72,33 @@ delete_table name = do
 
 -- ---------------------------------------------------------------------
 
--- |Write the value to a TCache Q 
+-- |Write the value to a TCache Q
 -- (as a new entry, no check for prior existence/overwrite)
 
-dirty_write :: (Show a, Show b, Typeable b, Serialize b, Indexable b) 
-   => a -> b -> Process ()
+dirty_write :: (Show b, Typeable b, Serialize b, Indexable b)
+   => TableName -> b -> Process ()
 dirty_write tableName record = do
   say $ "dirty_write:" ++ (show (tableName,record))
   let qid = getQid tableName
   liftIO $ deleteElem qid record
+  say $ "dirty_write deleteElem done:"
   liftIO $ push qid record
+  say $ "dirty_write push done:"
   liftIO $ syncCache
+  say $ "dirty_write done:" ++ (show (tableName,record))
   return ()
 
 -- ---------------------------------------------------------------------
 
-dirty_read :: 
-  (Show a, 
-   Show b, Indexable b,
-   Typeable c, Serialize c, Indexable c) 
-  => a -> b -> Process (Maybe c)
+dirty_read ::
+  (Show b, Indexable b,
+   Typeable c, Serialize c, Indexable c)
+  => TableName -> b -> Process (Maybe c)
 dirty_read tableName keyVal = do
   say $ "dirty_read:" ++ (show (tableName,keyVal))
   let qid = getQid tableName
   res <- liftIO $ pickElem qid (key keyVal)
-  return res 
+  return res
 
 -- ---------------------------------------------------------------------
 

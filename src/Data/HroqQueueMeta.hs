@@ -37,7 +37,7 @@ import qualified Data.ByteString.Lazy.Char8 as C8
 
 data Meta = MAllBuckets QName [TableName] TimeStamp
             deriving (Show,Read,Typeable)
- 
+
 instance Indexable Meta where
   key (MAllBuckets qn _ _) = show qn
 
@@ -78,21 +78,20 @@ add_bucket(QName, BucketId) ->
 meta_add_bucket :: QName -> TableName -> Process [TableName]
 meta_add_bucket queueName bucket = do
   say $ "meta_add_bucket:" ++ (show (queueName,bucket))
-  
   rv <- retry_dirty_read retryCnt eroq_queue_meta_table queueName
   case rv of
-    Nothing -> do 
+    Nothing -> do
        timestamp <- getTimeStamp
-       retry_dirty_write retryCnt  eroq_queue_meta_table  (MAllBuckets queueName [bucket] timestamp)
+       retry_dirty_write retryCnt eroq_queue_meta_table  (MAllBuckets queueName [bucket] timestamp)
        return [bucket]
-    Just (MAllBuckets _ b _) -> do 
+    Just (MAllBuckets _ b _) -> do
        let newBuckets = b ++ [bucket]
        timestamp <- getTimeStamp
-       retry_dirty_write retryCnt  eroq_queue_meta_table  (MAllBuckets queueName newBuckets timestamp)
+       retry_dirty_write retryCnt eroq_queue_meta_table  (MAllBuckets queueName newBuckets timestamp)
        return newBuckets
 
 retryCnt :: Integer
-retryCnt = 10 
+retryCnt = 10
 
 
 -- ---------------------------------------------------------------------

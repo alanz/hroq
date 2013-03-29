@@ -52,6 +52,8 @@ retry_dirty_write(N, TableName, Record) ->
 -}
 -- retry_dirty_write :: Int -> TableName -> QEntry -> Process ()
 retry_dirty_write n tableName record = do
+  dirty_write tableName record
+{-
   catch op handler
   where
     op = dirty_write tableName record
@@ -60,6 +62,7 @@ retry_dirty_write n tableName record = do
       say $ "retry_dirty_write:" ++ (show (tableName, n, record, e))
       liftIO $ threadDelay (100*1000) -- Haskell sleep takes us
       retry_dirty_write (n-1) tableName record
+-}
 
 -- ---------------------------------------------------------------------
 {-
@@ -92,7 +95,7 @@ retry_dirty_read n tableName key = do
       retry_dirty_read (n - 1) tableName key
 -}
 retry_dirty_read n tableName key = do
-  say $ "retry_dirty_read:" ++ (show (n,tableName,key))
+  -- say $ "retry_dirty_read:" ++ (show (n,tableName,key))
   dirty_read tableName key
 
 -- ---------------------------------------------------------------------
