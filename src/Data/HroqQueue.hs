@@ -97,7 +97,8 @@ data State = QueueState
 -- ---------------------------------------------------------------------
 
 -- -define(MAX_BUCKET_SIZE,  eroq_util:app_param(max_bucket_size, 5000)).
-maxBucketSize = 5000
+-- maxBucketSize = 5000
+maxBucketSizeConst = 5
 
 -- ---------------------------------------------------------------------
 {-
@@ -219,7 +220,7 @@ initFunc (queueName,appInfo,doCleanup) = do
              , qsTotalQueueSize     = queueSize
              , qsEnqueueCount       = 0
              , qsDequeueCount       = 0
-             , qsMaxBucketSize      = maxBucketSize
+             , qsMaxBucketSize      = maxBucketSizeConst
              , qsQueueName          = queueName
              , qsDoCleanup          = doCleanup
              , qsIndexList          = sort allKeys
@@ -348,6 +349,7 @@ handleEnqueue s (Enqueue q v) = do
     say $ "enqueue called with:" ++ (show (q,v))
     s' <- enqueue_one_message q v s
     reply () s'
+
 {-
 handle_call({enqueue, QueueName, Message}, _From, ServerState) when is_record(Message, eroq_message)->
     {ok, NewServerState} = enqueue_one_message(QueueName, Message, ServerState),
@@ -386,6 +388,7 @@ enqueue_one_message queueName v s = do
       maxBucketSize  = qsMaxBucketSize      s
       indexList      = qsIndexList          s
 
+
 {-
     DequeueCount   = ServerState#eroq_queue_state.dequeue_count,
 
@@ -393,7 +396,8 @@ enqueue_one_message queueName v s = do
 -}
       dequeueCount = qsDequeueCount s
 
-  say $ "enqueue_one_message:about to bucketSize"
+  say $ "enqueue_one_message:(procBucket,overflowBucket)=" ++ (show (procBucket,overflowBucket))
+
   TISize bucketSize <- table_info overflowBucket TableInfoSize
   say $ "enqueue_one_message:bucketSize=" ++ (show bucketSize)
 
@@ -411,6 +415,7 @@ enqueue_one_message queueName v s = do
       say $ "DEBUG: enq - create new bucket size(" ++ (show overflowBucket) ++ ")=" ++ (show bucketSize)
       make_next_bucket queueName
     else do
+      say $ "enqueue_one_message:using existing bucket:" ++ (show (bucketSize,maxBucketSize))
       return overflowBucket
   say $ "enqueue_one_message:enqueueWorkBucket=" ++ (show enqueueWorkBucket)
 
@@ -470,35 +475,42 @@ enqueue_one_message queueName v s = do
 
     end,
 -}
-  s' <- case enqueueWorkBucket of
+  s' <- if enqueueWorkBucket == procBucket
+          then do
              -- Inserted into processing bucket (head of queue) add key to index list....
-             procBucket     -> do
+               say $ "enqueue_one_message:enqueueWorkBucket==procBucket"
                return $ s { qsTotalQueueSize = newTotalQueuedMsg
                           , qsEnqueueCount = newEnqueueCount
                           , qsIndexList = indexList ++ [key]
                           }
+          else
+             if enqueueWorkBucket == overflowBucket
+               then do
+                 -- Inserted into overflow bucket (tail of the queue)...
+                 say $ "enqueue_one_message:enqueueWorkBucket==overflowBucket"
+                 return $ s { qsTotalQueueSize = newTotalQueuedMsg
+                            , qsEnqueueCount   = newEnqueueCount
+                            }
+               else do
+                 -- A new overflow bucket (new tail of queue) was created ....
+                 say $ "enqueue_one_message:new overflow bucket"
+                 case procBucket == overflowBucket of
+                   True -> do
+                        say $ "enqueue_one_message:not really??"
+                        return ()
+                   False -> do
+                        say $ "enqueue_one_message:yes"
 
-             -- Inserted into overflow bucket (tail of the queue)...
-             overflowBucket -> do
-               return $ s { qsTotalQueueSize = newTotalQueuedMsg
-                          , qsEnqueueCount   = newEnqueueCount
-                          }
-
-             -- A new overflow bucket (new tail of queue) was created ....
-             _ -> do
-               case procBucket of
-                 overflowBucket -> return ()
-                 _ ->
-                      -- But only swap the previous overflow bucket
-                      -- (previous tail) out of ram if it is not the
-                      -- head of the queue ....
-                      change_table_copy_type overflowBucket DiscOnlyCopies
+                        -- But only swap the previous overflow bucket
+                        -- (previous tail) out of ram if it is not the
+                        -- head of the queue ....
+                        change_table_copy_type overflowBucket DiscOnlyCopies
 
 
-               return $ s { qsCurrOverflowBucket = enqueueWorkBucket
-                          , qsTotalQueueSize     = newTotalQueuedMsg
-                          , qsEnqueueCount       = newEnqueueCount
-                          }
+                 return $ s { qsCurrOverflowBucket = enqueueWorkBucket
+                            , qsTotalQueueSize     = newTotalQueuedMsg
+                            , qsEnqueueCount       = newEnqueueCount
+                            }
 
 {-
     catch(eroq_stats_gatherer:publish_queue_stats(QueueName, {AppInfo, NewTotalQueuedMsg, NewEnqueueCount, DequeueCount})),

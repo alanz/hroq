@@ -56,10 +56,11 @@ worker = do
 
   say "worker started all"
 
-  enqueue qSida qNameA (qval "foo")
-  say "enqueue done a"
+  -- enqueue qSida qNameA (qval "foo1")
+  -- enqueue qSida qNameA (qval "foo2")
+  -- say "enqueue done a"
 
-  enqueue qSidb qNameB (qval "bar")
+  mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..8]
   say "enqueue done b"
 
   -- r <- enqueue_one_message (QN "tablea" ) (qval "bar") s
@@ -84,7 +85,7 @@ worker = do
 startLocalNode :: IO LocalNode
 startLocalNode = do
     -- [role, host, port] <- getArgs
-  let [role, host, port] = ["foo","127.0.0.1", "10511"]
+  let [role, host, port] = ["foo","127.0.0.1", "10514"]
   -- Right transport <- createTransport host port defaultTCPParameters
   Right (transport,_internals) <- createTransportExposeInternals host port defaultTCPParameters
   node <- newLocalNode transport initRemoteTable

@@ -48,7 +48,7 @@ data TableStorage = DiscOnlyCopies
                   deriving (Show)
 
 data TableName = TN String
-                 deriving (Show,Read,Typeable)
+                 deriving (Show,Read,Typeable,Eq)
 
 -- ---------------------------------------------------------------------
 
@@ -163,10 +163,10 @@ getBucketSize :: TableName -> Process TableInfoRsp
 getBucketSize tableName = do
   say $ "getBucketSize " ++ (show tableName) 
   let qid = (getQueue tableName) :: RefQueue QEntry
-  -- exists <- queueExists qid
-  let exists = False
+  exists <- queueExists qid
+  -- let exists = False
   say $ "getBucketSize exists=" ++ (show exists)
-{-
+
   case exists of
     True -> do
       res <- liftIO $ pickAll qid
@@ -175,8 +175,6 @@ getBucketSize tableName = do
     False -> do
       say $ "  getBucketSize(nonexist) " 
       return $ TISize 0
--}
-  return $ TISize 0
 
 getStorageType :: TableName -> Process TableInfoRsp
 getStorageType tableName = do
