@@ -8,6 +8,9 @@ module Data.HroqQueue
   , dequeue
 
   , startQueue
+
+  -- * debug
+  , enqueue_one_message
   )
   where
 
@@ -367,6 +370,7 @@ handleDequeue s (Dequeue q w mp) = do {(say "dequeuing") ; reply () (s) }
 enqueue_one_message :: QName -> QValue -> State -> Process State
 enqueue_one_message queueName v s = do
   key <- generate_key
+  say $ "enqueue_one_message:key=" ++ (show key)
   let msgRecord = QE key v
 
 {-
@@ -389,7 +393,9 @@ enqueue_one_message queueName v s = do
 -}
       dequeueCount = qsDequeueCount s
 
+  say $ "enqueue_one_message:about to bucketSize"
   TISize bucketSize <- table_info overflowBucket TableInfoSize
+  say $ "enqueue_one_message:bucketSize=" ++ (show bucketSize)
 
 {-
     EnqueueWorkBucket =
@@ -400,12 +406,13 @@ enqueue_one_message queueName v s = do
         OverflowBucket
     end,
 -}
-  enqueueWorkBucket <- if  (bucketSize >= maxBucketSize)
+  enqueueWorkBucket <- if (bucketSize >= maxBucketSize)
     then do
       say $ "DEBUG: enq - create new bucket size(" ++ (show overflowBucket) ++ ")=" ++ (show bucketSize)
       make_next_bucket queueName
     else do
       return overflowBucket
+  say $ "enqueue_one_message:enqueueWorkBucket=" ++ (show enqueueWorkBucket)
 
 {-
     ok = eroq_util:retry_dirty_write(10, EnqueueWorkBucket, MsgRecord),
@@ -415,9 +422,11 @@ enqueue_one_message queueName v s = do
 
     ok = eroq_log_dumper:dirty(EnqueueWorkBucket),
 -}
-  retry_dirty_write (10::Integer) enqueueWorkBucket msgRecord
+  -- retry_dirty_write (10::Integer) enqueueWorkBucket msgRecord
+  dirty_write_q enqueueWorkBucket msgRecord
   let newTotalQueuedMsg = (qsTotalQueueSize s) + 1
       newEnqueueCount   = (qsEnqueueCount s)   + 1
+  say $ "enqueue_one_message:write done"
 
 {-
     NewServerState =

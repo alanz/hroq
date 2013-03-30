@@ -12,6 +12,8 @@ import Control.Workflow
 import Data.Binary
 import Data.DeriveTH
 import Data.Hroq
+import Data.HroqMnesia
+import Data.HroqQueueMeta
 import Data.HroqQueue
 import Data.Maybe
 import Data.Persistent.Collection
@@ -43,8 +45,8 @@ worker :: Process ()
 worker = do
   App.start_app
 
-  let qNameA = QN "queue a"
-  let qNameB = QN "queue b"
+  let qNameA = QN "queue_a"
+  let qNameB = QN "queue_b"
 
   qSida <- startQueue (qNameA,"appinfo","blah")
   say $ "queue started:" ++ (show qSida)
@@ -55,19 +57,34 @@ worker = do
   say "worker started all"
 
   enqueue qSida qNameA (qval "foo")
-  say "enqueue done"
+  say "enqueue done a"
+
+  enqueue qSidb qNameB (qval "bar")
+  say "enqueue done b"
+
+  -- r <- enqueue_one_message (QN "tablea" ) (qval "bar") s
+
+  liftIO $ threadDelay (3*1000000) -- 3 seconds
+
+  let qid = (getQid (TN "tablea" )) :: RefQueue QEntry
+  say "about to check queueExists"
+  e <- queueExists qid
+  say $ "queueExists:e=" ++ (show e)  
+
+  let qidM = (getQid (TN "eroq_queue_meta_table" )) :: RefQueue Meta
+  em <- queueExists qidM
+  say $ "queueExists:em=" ++ (show em)  
 
 
   liftIO $ threadDelay (10*60*1000000) -- Ten minutes
   return ()
-
 
 -- ---------------------------------------------------------------------  
 
 startLocalNode :: IO LocalNode
 startLocalNode = do
     -- [role, host, port] <- getArgs
-  let [role, host, port] = ["foo","127.0.0.1", "10505"]
+  let [role, host, port] = ["foo","127.0.0.1", "10511"]
   -- Right transport <- createTransport host port defaultTCPParameters
   Right (transport,_internals) <- createTransportExposeInternals host port defaultTCPParameters
   node <- newLocalNode transport initRemoteTable
