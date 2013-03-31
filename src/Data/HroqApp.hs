@@ -18,6 +18,7 @@ import Control.Workflow
 import Data.Binary
 import Data.DeriveTH
 import Data.Hroq
+import Data.HroqLogger
 import Data.HroqSup
 import Data.HroqGroups
 import Data.HroqMnesia
@@ -75,7 +76,7 @@ stop(_) ->
 
 start_app :: Process ()
 start_app = do
-    say "HroqApp.start"
+    logm "HroqApp.start"
 
 {-
     case mnesia:table_info(schema, storage_type) of
@@ -99,10 +100,10 @@ start_app = do
     end,
 -}
 
-    say ("Creating consumer local storage table...")
+    logm ("Creating consumer local storage table...")
     create_consumer_local_storage_table
 
-    say ("Creating queue meta table...")
+    logm ("Creating queue meta table...")
     create_queue_meta_table
 
     -- AlarmFun = get_callback(alarms_callback),
@@ -137,10 +138,10 @@ hroq_queue_meta_table = TN "hroq_queue_meta_table"
 
 create_queue_meta_table :: Process ()
 create_queue_meta_table = do
-  say "create_queue_meta_table undefined"
+  logm "create_queue_meta_table undefined"
   let tableName = hroq_queue_meta_table
   res <- create_table DiscCopies tableName
-  say $ "create_queue_meta_table:create_table res=" ++ (show res)
+  logm $ "create_queue_meta_table:create_table res=" ++ (show res)
   return ()
 
 -- ---------------------------------------------------------------------
@@ -150,10 +151,10 @@ hroq_consumer_local_storage_table = TN "hroq_consumer_local_storage_table"
 
 create_consumer_local_storage_table :: Process ()
 create_consumer_local_storage_table = do
-  say "create_consumer_local_storage_table undefined"
+  logm "create_consumer_local_storage_table undefined"
   let tableName = hroq_consumer_local_storage_table
   res <- create_table DiscCopies tableName
-  say $ "create_consumer_local_storage_table:create_table res=" ++ (show res)
+  logm $ "create_consumer_local_storage_table:create_table res=" ++ (show res)
   return ()
 {-
     case mnesia:create_table(TableName, [{attributes, record_info(fields, eroq_consumer_message)}, {type, set}, {disc_copies, [node()]}, {record_name, eroq_consumer_message}]) of
@@ -182,5 +183,5 @@ get_callback(CBName) ->
     end.
 -}
 get_callback cbname = do
-  say $ "get_callback undefined:" ++ (show cbname)
+  logm $ "get_callback undefined:" ++ (show cbname)
 

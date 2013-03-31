@@ -31,6 +31,7 @@ import Data.Persistent.Collection
 import Data.RefSerialize
 import Data.TCache
 import Data.TCache.Defs
+import Data.HroqLogger
 import Data.Time.Clock
 import Data.Typeable
 import qualified Data.ByteString.Lazy.Char8 as C8

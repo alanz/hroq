@@ -19,30 +19,39 @@ library
   hs-source-dirs: . ./src
   ghc-options:
     -threaded
+    -with-rtsopts=-T
   build-depends:       base ==4.5.*
                      , RefSerialize
                      , TCache
                      , Workflow
                      , binary
+                     , bytestring
                      , containers
                      , network-transport-tcp
                      , derive
                      , distributed-process-platform
                      , distributed-process
+                     , time
+                     , hslogger
+                     , old-locale
 
 executable hroq
   main-is:             main.hs
   Hs-Source-Dirs:      . src
   ghc-options:
+    -- The -threaded and -with-rtsopts=-T are needed for EKG
     -threaded
-
+    -with-rtsopts=-T
   -- other-modules:       
   build-depends:       base ==4.5.*
+                       , RefSerialize
+                       , Workflow
                        , distributed-process
                        , distributed-process-platform
                        , distributed-process-simplelocalnet
                        , binary
                        , bytestring
+                       , TCache
                        , containers
                        , derive
                        , directory
@@ -53,6 +62,8 @@ executable hroq
                        , HTTP
                        , snap-core
                        , time
+                       , hslogger
+                       , old-locale
 
 --  ghc-options:
 --    -threaded

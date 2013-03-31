@@ -32,6 +32,7 @@ import Control.Distributed.Process.Platform.Time
 import Data.Binary
 import Data.DeriveTH
 import Data.Hroq
+import Data.HroqLogger
 import Data.Persistent.Collection
 import Data.RefSerialize
 import Data.TCache
@@ -61,19 +62,19 @@ data Storable a = Store SKey a
 
 change_table_copy_type :: TableName -> TableStorage -> Process ()
 change_table_copy_type bucket storageType = do
-  say $ "change_table_copy_type undefined for:" ++ (show (bucket,storageType))
+  logm $ "change_table_copy_type undefined for:" ++ (show (bucket,storageType))
 
 -- ---------------------------------------------------------------------
 
 create_table :: TableStorage -> TableName -> Process ()
 create_table storage name = do
-  say "create_table undefined"
+  logm "create_table undefined"
 
 -- ---------------------------------------------------------------------
 
 delete_table :: TableName -> Process ()
 delete_table name = do
-  say "create_table undefined"
+  logm "create_table undefined"
 
 -- ---------------------------------------------------------------------
 
@@ -83,27 +84,27 @@ delete_table name = do
 dirty_write :: (Show b, Typeable b, Serialize b, Indexable b)
    => TableName -> b -> Process ()
 dirty_write tableName record = do
-  say $ "dirty_write:" ++ (show (tableName,record))
+  -- logm $ "dirty_write:" ++ (show (tableName,record))
   let qid = getQid tableName
   liftIO $ deleteElem qid record
-  say $ "dirty_write deleteElem done:"
+  -- logm $ "dirty_write deleteElem done:"
   liftIO $ push qid record
-  say $ "dirty_write push done:"
+  -- logm $ "dirty_write push done:"
   liftIO $ syncCache
-  say $ "dirty_write done:" ++ (show (tableName,record))
+  -- logm $ "dirty_write done:" ++ (show (tableName,record))
   return ()
 
 dirty_write_q :: 
    TableName -> QEntry -> Process ()
 dirty_write_q tableName record = do
-  say $ "dirty_write:" ++ (show (tableName,record))
+  -- logm $ "dirty_write:" ++ (show (tableName,record))
   let qid = getQueue tableName
   liftIO $ deleteElem qid record
-  say $ "dirty_write deleteElem done:"
+  -- logm $ "dirty_write deleteElem done:"
   liftIO $ push qid record
-  say $ "dirty_write push done:"
+  -- logm $ "dirty_write push done:"
   liftIO $ syncCache
-  say $ "dirty_write done:" ++ (show (tableName,record))
+  -- logm $ "dirty_write done:" ++ (show (tableName,record))
   return ()
 
 -- ---------------------------------------------------------------------
@@ -113,7 +114,7 @@ dirty_read ::
    Typeable c, Serialize c, Indexable c)
   => TableName -> b -> Process (Maybe c)
 dirty_read tableName keyVal = do
-  say $ "dirty_read:" ++ (show (tableName,keyVal))
+  logm $ "dirty_read:" ++ (show (tableName,keyVal))
   let qid = getQid tableName
   res <- liftIO $ pickElem qid (key keyVal)
   return res
@@ -122,17 +123,17 @@ dirty_read tableName keyVal = do
 
 dirty_all_keys :: TableName -> Process [QKey]
 dirty_all_keys tableName = do
-  say $ "dirty_all_keys:" ++ (show tableName)
+  logm $ "dirty_all_keys:" ++ (show tableName)
   let qid = getQueue tableName
   res <- liftIO $ pickAll qid
-  say $ "  dirty_all_keys:res=" ++ (show res)
+  logm $ "  dirty_all_keys:res=" ++ (show res)
   return $ map (\(QE k _) -> k) res
 
 -- ---------------------------------------------------------------------
 
 wait_for_tables :: [TableName] -> Delay -> Process ()
 wait_for_tables tables maxWait = do
-  say $ "wait_for_tables undefined"
+  logm $ "wait_for_tables undefined"
 
 
 -- ---------------------------------------------------------------------
@@ -148,32 +149,31 @@ data TableInfoRsp = TISize Integer
 
 table_info :: TableName -> TableInfoReq -> Process TableInfoRsp
 table_info tableName TableInfoSize        = do
-  say $ "table_info:TableInfoSize" ++ (show (tableName))
+  -- logm $ "table_info:TableInfoSize" ++ (show (tableName))
   getBucketSize  tableName
 table_info tableName TableInfoStorageType = do
-  say $ "table_info:TableInfoStorageType" ++ (show (tableName))
+  -- logm $ "table_info:TableInfoStorageType" ++ (show (tableName))
   getStorageType tableName
 table_info tableName infoReq = do
-  say $ "table_info undefined:" ++ (show (tableName,infoReq))
+  -- logm $ "table_info undefined:" ++ (show (tableName,infoReq))
   return TIError
 
 -- ---------------------------------------------------------------------
 
 getBucketSize :: TableName -> Process TableInfoRsp
 getBucketSize tableName = do
-  say $ "getBucketSize " ++ (show tableName) 
+  -- logm $ "getBucketSize " ++ (show tableName) 
   let qid = (getQueue tableName) :: RefQueue QEntry
   exists <- queueExists qid
-  -- let exists = False
-  say $ "getBucketSize exists=" ++ (show exists)
+  -- logm $ "getBucketSize exists=" ++ (show exists)
 
   case exists of
     True -> do
       res <- liftIO $ pickAll qid
-      say $ "  getBucketSize(exists) " ++ (show (tableName,res)) 
+      -- logm $ "  getBucketSize(exists) " ++ (show (tableName,res)) 
       return $ TISize (fromIntegral $ length res)
     False -> do
-      say $ "  getBucketSize(nonexist) " 
+      -- logm $ "  getBucketSize(nonexist) " 
       return $ TISize 0
 
 getStorageType :: TableName -> Process TableInfoRsp
@@ -181,7 +181,7 @@ getStorageType tableName = do
   let qid = (getQueue tableName ) :: RefQueue QEntry
   e  <- queueExists qid
   let storage = if e then DiscCopies else StorageNone
-  say $ "getStorageType:" ++ (show (tableName,storage))
+  logm $ "getStorageType:" ++ (show (tableName,storage))
   return $ TIStorageType storage
 
 -- ---------------------------------------------------------------------
@@ -199,9 +199,9 @@ getQid x = getQRef $ show x
 
 queueExists :: (Typeable a, Serialize a)  => RefQueue a -> Process Bool
 queueExists tv= do
-    say $ "queueExists:" ++ (show tv)
+    -- logm $ "queueExists:" ++ (show tv)
     mdx <- liftIO $ atomically $ readDBRef tv
-    say $ "queueExists:mdx done"
+    -- logm $ "queueExists:mdx done"
     case mdx of
      Nothing -> return False
      Just dx -> return True

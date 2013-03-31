@@ -14,6 +14,7 @@ import Control.Concurrent
 import Control.Workflow
 import Data.Binary
 import Data.Maybe
+import Data.HroqLogger
 import Data.Persistent.Collection
 import Data.RefSerialize
 import Data.TCache
@@ -25,4 +26,5 @@ import qualified Data.ByteString.Lazy.Char8 as C8
 -- ---------------------------------------------------------------------
 
 hroq_start_link alarmFun qwFun = do
-  say "hroq_start_link undefined"
+  logm "hroq_start_link undefined"
+

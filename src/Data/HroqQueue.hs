@@ -29,6 +29,7 @@ import Network.Transport.TCP (createTransportExposeInternals, defaultTCPParamete
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Data.Hroq
+import Data.HroqLogger
 import Data.HroqGroups
 import Data.HroqMnesia
 import Data.HroqQueueMeta
@@ -98,7 +99,8 @@ data State = QueueState
 
 -- -define(MAX_BUCKET_SIZE,  eroq_util:app_param(max_bucket_size, 5000)).
 -- maxBucketSize = 5000
-maxBucketSizeConst = 5
+-- maxBucketSizeConst = 5
+maxBucketSizeConst = 50
 
 -- ---------------------------------------------------------------------
 {-
@@ -154,22 +156,22 @@ startQueue initParams =
 initFunc :: InitHandler (QName,String,CleanupFunc) State
 initFunc (queueName,appInfo,doCleanup) = do
 
-    say $ "HroqQueue:initFunc started"
+    logm $ "HroqQueue:initFunc started"
 
     -- process_flag(trap_exit, true),
 
     -- ok = mnesia:wait_for_tables([eroq_queue_meta_table], infinity),
     wait_for_tables [eroq_queue_meta_table] Infinity
-    say $ "HroqQueue:initFunc 1"
+    logm $ "HroqQueue:initFunc 1"
 
     -- Run through the control table & delete all empty buckets ...
     -- {QueueSize, Buckets} = check_buckets(QueueName),
     (queueSize,buckets) <- check_buckets queueName
-    say $ "HroqQueue:initFunc 2:(queueSize,buckets)=" ++ (show (queueSize,buckets))
+    logm $ "HroqQueue:initFunc 2:(queueSize,buckets)=" ++ (show (queueSize,buckets))
 
     -- ok = mnesia:wait_for_tables(Buckets, infinity),
     wait_for_tables buckets Infinity
-    say $ "HroqQueue:initFunc 3"
+    logm $ "HroqQueue:initFunc 3"
 
     -- [CurrProcBucket | _] = Buckets,
     -- CurrOverflowBucket   = lists:last(Buckets),
@@ -192,11 +194,11 @@ initFunc (queueName,appInfo,doCleanup) = do
       _ -> do
         change_table_copy_type currProcBucket     DiscCopies
         change_table_copy_type currOverflowBucket DiscCopies
-    say $ "HroqQueue:initFunc 4"
+    logm $ "HroqQueue:initFunc 4"
 
 
     allKeys <- dirty_all_keys currProcBucket
-    say $ "HroqQueue:initFunc 5"
+    logm $ "HroqQueue:initFunc 5"
 
 {-
     ServerState =#eroq_queue_state  {  
@@ -230,12 +232,12 @@ initFunc (queueName,appInfo,doCleanup) = do
 
     -- eroq_groups:join(QueueName, ?MODULE),                
     join queueName "HroqQueue"
-    say $ "HroqQueue:initFunc 6"
+    logm $ "HroqQueue:initFunc 6"
 
     -- catch(eroq_stats_gatherer:publish_queue_stats(QueueName, {AppInfo, QueueSize, 0, 0})),
     publish_queue_stats queueName (appInfo, queueSize, 0, 0)
 
-    say $ "HroqQueue:initFunc ending"
+    logm $ "HroqQueue:initFunc ending"
 
     return $ InitOk s Infinity
 
@@ -267,9 +269,9 @@ check_buckets(QueueName) ->
 -}
 check_buckets :: QName -> Process (Integer,[TableName])
 check_buckets queueName = do
-  say $ "check_buckets:" ++ (show queueName)
+  logm $ "check_buckets:" ++ (show queueName)
   mab <- meta_all_buckets queueName
-  say $ " check_buckets:mab=" ++ (show mab)
+  logm $ " check_buckets:mab=" ++ (show mab)
   case mab of
     [b] -> do
       TIStorageType storage <- table_info b TableInfoStorageType
@@ -337,8 +339,8 @@ serverDefinition = defaultProcess {
         ]
     , infoHandlers =
         [
-        -- handleInfo_ (\(ProcessMonitorNotification _ _ r) -> say $ show r >> continue_)
-         handleInfo (\dict (ProcessMonitorNotification _ _ r) -> do {say $ show r; continue dict })
+        -- handleInfo_ (\(ProcessMonitorNotification _ _ r) -> logm $ show r >> continue_)
+         handleInfo (\dict (ProcessMonitorNotification _ _ r) -> do {logm $ show r; continue dict })
         ]
      , timeoutHandler = \_ _ -> stop $ TerminateOther "timeout az"
     } :: ProcessDefinition State
@@ -346,7 +348,7 @@ serverDefinition = defaultProcess {
 -- Note: the handlers match on type signature
 handleEnqueue :: State -> Enqueue -> Process (ProcessReply State ())
 handleEnqueue s (Enqueue q v) = do
-    say $ "enqueue called with:" ++ (show (q,v))
+    -- logm $ "enqueue called with:" ++ (show (q,v))
     s' <- enqueue_one_message q v s
     reply () s'
 
@@ -363,7 +365,7 @@ handle_call({enqueue, QueueName, Message}, From, ServerState)->
 
 
 handleDequeue :: State -> Dequeue -> Process (ProcessReply State ())
-handleDequeue s (Dequeue q w mp) = do {(say "dequeuing") ; reply () (s) }
+handleDequeue s (Dequeue q w mp) = do {(logm "dequeuing") ; reply () (s) }
 
 
 -- ---------------------------------------------------------------------
@@ -372,7 +374,7 @@ handleDequeue s (Dequeue q w mp) = do {(say "dequeuing") ; reply () (s) }
 enqueue_one_message :: QName -> QValue -> State -> Process State
 enqueue_one_message queueName v s = do
   key <- generate_key
-  say $ "enqueue_one_message:key=" ++ (show key)
+  -- logm $ "enqueue_one_message:key=" ++ (show key)
   let msgRecord = QE key v
 
 {-
@@ -396,10 +398,10 @@ enqueue_one_message queueName v s = do
 -}
       dequeueCount = qsDequeueCount s
 
-  say $ "enqueue_one_message:(procBucket,overflowBucket)=" ++ (show (procBucket,overflowBucket))
+  -- logm $ "enqueue_one_message:(procBucket,overflowBucket)=" ++ (show (procBucket,overflowBucket))
 
   TISize bucketSize <- table_info overflowBucket TableInfoSize
-  say $ "enqueue_one_message:bucketSize=" ++ (show bucketSize)
+  -- logm $ "enqueue_one_message:bucketSize=" ++ (show bucketSize)
 
 {-
     EnqueueWorkBucket =
@@ -412,12 +414,12 @@ enqueue_one_message queueName v s = do
 -}
   enqueueWorkBucket <- if (bucketSize >= maxBucketSize)
     then do
-      say $ "DEBUG: enq - create new bucket size(" ++ (show overflowBucket) ++ ")=" ++ (show bucketSize)
+      logm $ "DEBUG: enq - create new bucket size(" ++ (show overflowBucket) ++ ")=" ++ (show bucketSize)
       make_next_bucket queueName
     else do
-      say $ "enqueue_one_message:using existing bucket:" ++ (show (bucketSize,maxBucketSize))
+      -- logm $ "enqueue_one_message:using existing bucket:" ++ (show (bucketSize,maxBucketSize))
       return overflowBucket
-  say $ "enqueue_one_message:enqueueWorkBucket=" ++ (show enqueueWorkBucket)
+  -- logm $ "enqueue_one_message:enqueueWorkBucket=" ++ (show enqueueWorkBucket)
 
 {-
     ok = eroq_util:retry_dirty_write(10, EnqueueWorkBucket, MsgRecord),
@@ -431,7 +433,7 @@ enqueue_one_message queueName v s = do
   dirty_write_q enqueueWorkBucket msgRecord
   let newTotalQueuedMsg = (qsTotalQueueSize s) + 1
       newEnqueueCount   = (qsEnqueueCount s)   + 1
-  say $ "enqueue_one_message:write done"
+  -- logm $ "enqueue_one_message:write done"
 
 {-
     NewServerState =
@@ -478,7 +480,7 @@ enqueue_one_message queueName v s = do
   s' <- if enqueueWorkBucket == procBucket
           then do
              -- Inserted into processing bucket (head of queue) add key to index list....
-               say $ "enqueue_one_message:enqueueWorkBucket==procBucket"
+               -- logm $ "enqueue_one_message:enqueueWorkBucket==procBucket"
                return $ s { qsTotalQueueSize = newTotalQueuedMsg
                           , qsEnqueueCount = newEnqueueCount
                           , qsIndexList = indexList ++ [key]
@@ -487,19 +489,19 @@ enqueue_one_message queueName v s = do
              if enqueueWorkBucket == overflowBucket
                then do
                  -- Inserted into overflow bucket (tail of the queue)...
-                 say $ "enqueue_one_message:enqueueWorkBucket==overflowBucket"
+                 -- logm $ "enqueue_one_message:enqueueWorkBucket==overflowBucket"
                  return $ s { qsTotalQueueSize = newTotalQueuedMsg
                             , qsEnqueueCount   = newEnqueueCount
                             }
                else do
                  -- A new overflow bucket (new tail of queue) was created ....
-                 say $ "enqueue_one_message:new overflow bucket"
+                 logm $ "enqueue_one_message:new overflow bucket"
                  case procBucket == overflowBucket of
                    True -> do
-                        say $ "enqueue_one_message:not really??"
+                        -- logm $ "enqueue_one_message:not really??"
                         return ()
                    False -> do
-                        say $ "enqueue_one_message:yes"
+                        -- logm $ "enqueue_one_message:yes"
 
                         -- But only swap the previous overflow bucket
                         -- (previous tail) out of ram if it is not the

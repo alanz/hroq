@@ -16,6 +16,7 @@ import Data.Typeable (Typeable)
 import Network.Transport.TCP (createTransportExposeInternals, defaultTCPParameters)
 import qualified Data.Map as Map
 import Data.Hroq
+import Data.HroqLogger
 import Data.Persistent.Collection
 import Data.RefSerialize
 import Data.TCache
@@ -25,7 +26,7 @@ import Data.Typeable
 
 join :: QName -> String -> Process ()
 join qname moduleName = do
-  say "join undefined"
+  logm "join undefined"
 
 
 

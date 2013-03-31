@@ -16,8 +16,9 @@ import Data.Typeable (Typeable)
 import Network.Transport.TCP (createTransportExposeInternals, defaultTCPParameters)
 import qualified Data.Map as Map
 import Data.Hroq
+import Data.HroqLogger
 
 publish_queue_stats :: QName -> (String,Integer,Integer,Integer) -> Process ()
 publish_queue_stats qname (appInfo,queueSize,enqued,dequeued) = do -- TODO: check that enqued/dequeued are correct interpretations
-  say "publish_queue_stats undefined"
+  logm "publish_queue_stats undefined"
 

@@ -26,6 +26,7 @@ import Network.Transport.TCP (createTransportExposeInternals, defaultTCPParamete
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Data.Hroq
+import Data.HroqLogger
 import Data.HroqGroups
 import Data.HroqMnesia
 import Data.HroqStatsGatherer
@@ -77,7 +78,7 @@ add_bucket(QName, BucketId) ->
 -}
 meta_add_bucket :: QName -> TableName -> Process [TableName]
 meta_add_bucket queueName bucket = do
-  say $ "meta_add_bucket:" ++ (show (queueName,bucket))
+  logm $ "meta_add_bucket:" ++ (show (queueName,bucket))
   rv <- retry_dirty_read retryCnt eroq_queue_meta_table queueName
   case rv of
     Nothing -> do
@@ -109,9 +110,9 @@ all_buckets(QName) ->
 -}
 meta_all_buckets :: QName -> Process [TableName]
 meta_all_buckets queueName = do
-  say $ "meta_all_buckets :" ++ (show queueName)
+  logm $ "meta_all_buckets :" ++ (show queueName)
   v <- dirty_read eroq_queue_meta_table queueName
-  say $ "meta_all_buckets v:" ++ (show v)
+  logm $ "meta_all_buckets v:" ++ (show v)
   case v of
     Nothing -> return []
     Just (MAllBuckets _ b _) -> return b
@@ -119,5 +120,5 @@ meta_all_buckets queueName = do
 -- ---------------------------------------------------------------------
 
 meta_del_bucket queueName bucket = do
-  say "meta_del_bucket undefined"
+  logm "meta_del_bucket undefined"
 

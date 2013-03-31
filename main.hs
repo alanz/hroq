@@ -12,6 +12,7 @@ import Control.Workflow
 import Data.Binary
 import Data.DeriveTH
 import Data.Hroq
+import Data.HroqLogger
 import Data.HroqMnesia
 import Data.HroqQueueMeta
 import Data.HroqQueue
@@ -30,7 +31,9 @@ import qualified System.Remote.Monitoring as EKG
 -- ---------------------------------------------------------------------
 
 main = do
-  forkIO $ do {_<- EKG.forkServer "localhost" 8000; return ()}
+  -- forkIO $ do {_<- EKG.forkServer "localhost" 8000; return ()}
+  EKG.forkServer "localhost" 8000
+
   node <- startLocalNode
 
   runProcess node worker
@@ -60,7 +63,8 @@ worker = do
   -- enqueue qSida qNameA (qval "foo2")
   -- say "enqueue done a"
 
-  mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..8]
+  mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..8000]
+  -- mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..800]
   say "enqueue done b"
 
   -- r <- enqueue_one_message (QN "tablea" ) (qval "bar") s
@@ -85,10 +89,11 @@ worker = do
 startLocalNode :: IO LocalNode
 startLocalNode = do
     -- [role, host, port] <- getArgs
-  let [role, host, port] = ["foo","127.0.0.1", "10514"]
+  let [role, host, port] = ["foo","127.0.0.1", "10510"]
   -- Right transport <- createTransport host port defaultTCPParameters
   Right (transport,_internals) <- createTransportExposeInternals host port defaultTCPParameters
   node <- newLocalNode transport initRemoteTable
+  startLoggerProcess node
   return node
   
 
