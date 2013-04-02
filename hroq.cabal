@@ -20,6 +20,7 @@ library
   ghc-options:
     -threaded
     -with-rtsopts=-T
+    -- -fhpc
   build-depends:       base ==4.5.*
                      , RefSerialize
                      , TCache
@@ -34,6 +35,7 @@ library
                      , time
                      , hslogger
                      , old-locale
+                     , ekg
 
 executable hroq
   main-is:             main.hs
@@ -42,6 +44,8 @@ executable hroq
     -- The -threaded and -with-rtsopts=-T are needed for EKG
     -threaded
     -with-rtsopts=-T
+    -- -prof -auto
+    -- -fhpc
   -- other-modules:       
   build-depends:       base ==4.5.*
                        , RefSerialize
@@ -64,6 +68,7 @@ executable hroq
                        , time
                        , hslogger
                        , old-locale
+
 
 --  ghc-options:
 --    -threaded
