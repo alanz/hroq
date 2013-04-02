@@ -31,12 +31,14 @@ import Data.HroqGroups
 import Data.HroqMnesia
 import Data.HroqStatsGatherer
 import Data.HroqUtil
+import Data.RefSerialize
+import Data.TCache
 import Data.TCache.Defs
 import qualified Data.ByteString.Lazy.Char8 as C8
 
 -- ---------------------------------------------------------------------
 
-data Meta = MAllBuckets QName [TableName] TimeStamp
+data Meta = MAllBuckets !QName ![TableName] !TimeStamp
             deriving (Show,Read,Typeable)
 
 instance Indexable Meta where
@@ -45,6 +47,18 @@ instance Indexable Meta where
 instance Serializable Meta where
    serialize s  = C8.pack $ show s
    deserialize = read. C8.unpack
+
+instance Serialize Meta where
+  showp = showpBinary
+  readp = readpBinary
+
+instance Binary Meta where
+  put (MAllBuckets q tns ts) = put q >> put tns >> put ts
+  get = do
+    q <- get
+    tns <- get
+    ts <- get
+    return $ MAllBuckets q tns ts
 
 -- ---------------------------------------------------------------------
 

@@ -53,30 +53,49 @@ type QWorker = (Int) -- Keep it simple while sorting the plumbing
 
 -- operations to be exposed
 
-data Enqueue = Enqueue QName QValue
+data Enqueue = Enqueue !QName !QValue
                deriving (Typeable, Show)
-data Dequeue = Dequeue QName QWorker (Maybe ProcessId)
+data Dequeue = Dequeue !QName !QWorker (Maybe ProcessId)
                deriving (Typeable, Show)-- Remove one entry
 
+{-
 $(derive makeBinary ''QName)
 -- $(derive makeBinary ''QWorker) -- Need a closure, actually
 $(derive makeBinary ''Enqueue)
 $(derive makeBinary ''Dequeue)
+-}
+
+instance Binary Enqueue where
+  put (Enqueue n v) = put n >> put v
+  get = do
+    n <- get
+    v <- get
+    return (Enqueue n v)
+
+instance Binary Dequeue where
+  put (Dequeue n w mpid) = put n >> put w >> put mpid
+  get = do
+    n <- get
+    w <- get
+    mpid <- get
+    return (Dequeue n w mpid)
+
+
 
 type CleanupFunc = String
 
 data State = QueueState
-   { qsAppInfo            :: String
-   , qsCurrProcBucket     :: TableName
-   , qsCurrOverflowBucket :: TableName
-   , qsTotalQueueSize     :: Integer
-   , qsEnqueueCount       :: Integer
-   , qsDequeueCount       :: Integer
-   , qsMaxBucketSize      :: Integer
-   , qsQueueName          :: QName
+   { qsAppInfo            :: !String
+   , qsCurrProcBucket     :: !TableName
+   , qsCurrOverflowBucket :: !TableName
+   , qsTotalQueueSize     :: !Integer
+   , qsEnqueueCount       :: !Integer
+   , qsDequeueCount       :: !Integer
+   , qsMaxBucketSize      :: !Integer
+   , qsQueueName          :: !QName
    , qsDoCleanup          :: CleanupFunc -- Should be a function eventually?
-   , qsIndexList          :: [QKey]
-   , qsSubscriberPidDict  :: Set.Set ProcessId
+   , qsIndexList          :: ![QKey]
+   , qsSubscriberPidDict  :: !(Set.Set ProcessId)
    }
 
 {-
@@ -97,10 +116,6 @@ data State = QueueState
 
 -- ---------------------------------------------------------------------
 
--- -define(MAX_BUCKET_SIZE,  eroq_util:app_param(max_bucket_size, 5000)).
--- maxBucketSize = 5000
--- maxBucketSizeConst = 5
-maxBucketSizeConst = 50
 
 -- ---------------------------------------------------------------------
 {-

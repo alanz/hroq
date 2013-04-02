@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveDataTypeable  #-}
+{- # LANGUAGE DeriveDataTypeable  # -}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
 
@@ -8,7 +8,7 @@ import Control.Distributed.Process.Node
 import Control.Distributed.Process.Platform
 import Control.Distributed.Process.Platform.ManagedProcess hiding (runProcess)
 import Control.Distributed.Process.Platform.Time
-import Control.Workflow
+-- import Control.Workflow
 import Data.Binary
 import Data.DeriveTH
 import Data.Hroq
@@ -63,8 +63,8 @@ worker = do
   -- enqueue qSida qNameA (qval "foo2")
   -- say "enqueue done a"
 
-  -- mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..8000]
-  mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..2000]
+  mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..8000]
+  -- mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..2000]
   -- mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..800]
   say "enqueue done b"
 

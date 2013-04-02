@@ -10,7 +10,8 @@ module Data.Hroq
   , ioGetTimeStamp
   , getTimeStamp
   , nullTimeStamp
- 
+  ,  maxBucketSizeConst
+
   -- *bucket types
   , ProcBucket(..)
   , OverflowBucket(..)
@@ -24,7 +25,7 @@ import Control.Distributed.Process.Platform
 import Control.Distributed.Process.Platform.Async
 import Control.Distributed.Process.Platform.ManagedProcess hiding (runProcess)
 import Control.Distributed.Process.Platform.Time
-import Control.Workflow
+-- import Control.Workflow
 import Data.Binary
 import Data.Maybe
 import Data.Persistent.Collection
@@ -39,7 +40,14 @@ import qualified Data.Map as Map
 
 -- ---------------------------------------------------------------------
 
-data QName = QN String
+-- -define(MAX_BUCKET_SIZE,  eroq_util:app_param(max_bucket_size, 5000)).
+-- maxBucketSize = 5000
+-- maxBucketSizeConst = 5
+maxBucketSizeConst = 50
+
+-- ---------------------------------------------------------------------
+
+data QName = QN !String
              deriving (Typeable,Show,Read)
 
 instance Indexable QName where
@@ -50,7 +58,13 @@ instance Serializable QName where
   deserialize = read. C8.unpack
   -- setPersist =
 
-data QKey = QK String
+instance Binary QName where
+  put (QN s) = put s
+  get = do
+    s <- get
+    return (QN s)
+
+data QKey = QK !String
             deriving (Typeable,Show,Read,Eq,Ord)
 
 instance Binary QKey where
@@ -61,8 +75,8 @@ instance Binary QKey where
 
 
 type QValue = Map.Map String String
-data QEntry = QE QKey    -- ^Id
-                 QValue  -- ^payload
+data QEntry = QE !QKey    -- ^Id
+                 !QValue  -- ^payload
               deriving (Typeable,Read,Show)
 
 instance Binary QEntry where
@@ -84,15 +98,21 @@ instance Serializable QEntry where
    deserialize = read. C8.unpack
 
 
-data ProcBucket = PB QName
+data ProcBucket = PB !QName
      deriving (Show)
 
-data OverflowBucket = OB QName
+data OverflowBucket = OB !QName
      deriving (Show)
 
 
-data TimeStamp = TS String
+data TimeStamp = TS !String
                  deriving (Show,Read)
+
+instance Binary TimeStamp where
+  put (TS s) = put s
+  get = do
+    s <- get
+    return (TS s)
 
 -- ---------------------------------------------------------------------
 

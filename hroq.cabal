@@ -24,7 +24,7 @@ library
   build-depends:       base ==4.5.*
                      , RefSerialize
                      , TCache
-                     , Workflow
+                     -- , Workflow
                      , binary
                      , bytestring
                      , containers
@@ -49,7 +49,7 @@ executable hroq
   -- other-modules:       
   build-depends:       base ==4.5.*
                        , RefSerialize
-                       , Workflow
+                       -- , Workflow
                        , distributed-process
                        , distributed-process-platform
                        , distributed-process-simplelocalnet

@@ -42,14 +42,27 @@ import Data.Typeable (Typeable)
 import Network.Transport.TCP (createTransportExposeInternals, defaultTCPParameters)
 import qualified Data.Map as Map
 
+-- ---------------------------------------------------------------------
+
+maxCacheSize :: Int
+maxCacheSize = fromIntegral $ maxBucketSizeConst * 3
+
+-- ---------------------------------------------------------------------
+
 
 data TableStorage = DiscOnlyCopies
                   | DiscCopies
                   | StorageNone
                   deriving (Show)
 
-data TableName = TN String
+data TableName = TN !String
                  deriving (Show,Read,Typeable,Eq)
+
+instance Binary TableName where
+  put (TN s) = put s
+  get = do
+    s <- get
+    return (TN s)
 
 -- ---------------------------------------------------------------------
 
@@ -61,8 +74,20 @@ data Storable a = Store SKey a
 -}
 
 change_table_copy_type :: TableName -> TableStorage -> Process ()
+change_table_copy_type bucket DiscOnlyCopies = do
+  logm $ "change_table_copy_type to DiscOnlyCopies for:" ++ (show (bucket))
+
+  -- let qid = getQueue bucket
+  -- liftIO $ atomically $ flushDBRef qid
+  
+  -- liftIO $ clearSyncCache defaultCheck maxCacheSize
+  liftIO $ clearSyncCache mySyncCheck (10::Int)
+
 change_table_copy_type bucket storageType = do
   logm $ "change_table_copy_type undefined for:" ++ (show (bucket,storageType))
+
+mySyncCheck :: Integer -> Integer -> Integer -> Bool
+mySyncCheck _ _ _ = True
 
 -- ---------------------------------------------------------------------
 
@@ -142,8 +167,8 @@ data TableInfoReq = TableInfoSize
                   | TableInfoStorageType
                     deriving (Show)
 
-data TableInfoRsp = TISize Integer
-                  | TIStorageType TableStorage
+data TableInfoRsp = TISize !Integer
+                  | TIStorageType !TableStorage
                   | TIError
                     deriving (Show)
 

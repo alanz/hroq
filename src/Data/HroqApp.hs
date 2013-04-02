@@ -14,7 +14,7 @@ import Control.Distributed.Process.Platform
 import Control.Distributed.Process.Platform.Async
 import Control.Distributed.Process.Platform.ManagedProcess hiding (runProcess)
 import Control.Distributed.Process.Platform.Time
-import Control.Workflow
+-- import Control.Workflow
 import Data.Binary
 import Data.DeriveTH
 import Data.Hroq
