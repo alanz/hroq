@@ -36,6 +36,7 @@ import Data.HroqQueueMeta
 import Data.HroqStatsGatherer
 import Data.HroqUtil
 
+
 --------------------------------------------------------------------------------
 -- Types                                                                      --
 --------------------------------------------------------------------------------
@@ -203,10 +204,10 @@ initFunc (queueName,appInfo,doCleanup) = do
         ok = change_table_copy_type(CurrOverflowBucket, disc_copies)
     end,
 -}
-    case currProcBucket of
-      currOverflowBucket -> do
+    if currProcBucket == currOverflowBucket 
+      then do
         change_table_copy_type currProcBucket DiscCopies
-      _ -> do
+      else do
         change_table_copy_type currProcBucket     DiscCopies
         change_table_copy_type currOverflowBucket DiscCopies
     logm $ "HroqQueue:initFunc 4"

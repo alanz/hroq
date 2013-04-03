@@ -18,28 +18,34 @@ module Data.HroqMnesia
   , table_info
 
   -- * debug
-  , getQid
   , queueExists
   )
   where
 
-import Control.Distributed.Process hiding (call)
+import Control.Concurrent
+import Control.Distributed.Process hiding (call,finally)
 import Control.Distributed.Process.Node
 import Control.Distributed.Process.Platform
 import Control.Distributed.Process.Platform.Async
 import Control.Distributed.Process.Platform.ManagedProcess hiding (runProcess)
 import Control.Distributed.Process.Platform.Time
+import Control.Exception as Exception
+import Control.Monad(when,replicateM)
 import Data.Binary
 import Data.DeriveTH
 import Data.Hroq
 import Data.HroqLogger
-import Data.Persistent.Collection
+import Data.IORef
+import Data.List(elemIndices,isInfixOf)
+import Data.Maybe(fromJust)
 import Data.RefSerialize
-import Data.TCache
-import Data.TCache.Defs
-import Data.TCache.IResource
 import Data.Typeable (Typeable)
 import Network.Transport.TCP (createTransportExposeInternals, defaultTCPParameters)
+import System.Directory
+import System.IO
+import System.IO.Error
+import System.IO.Unsafe
+import qualified Data.ByteString.Lazy.Char8 as B
 import qualified Data.Map as Map
 
 -- ---------------------------------------------------------------------
@@ -47,8 +53,11 @@ import qualified Data.Map as Map
 maxCacheSize :: Int
 maxCacheSize = fromIntegral $ maxBucketSizeConst * 3
 
--- ---------------------------------------------------------------------
+directoryPrefix :: String
+directoryPrefix = ".hroqdata/"
 
+
+-- ---------------------------------------------------------------------
 
 data TableStorage = DiscOnlyCopies
                   | DiscCopies
@@ -75,13 +84,7 @@ data Storable a = Store SKey a
 
 change_table_copy_type :: TableName -> TableStorage -> Process ()
 change_table_copy_type bucket DiscOnlyCopies = do
-  logm $ "change_table_copy_type to DiscOnlyCopies for:" ++ (show (bucket))
-
-  -- let qid = getQueue bucket
-  -- liftIO $ atomically $ flushDBRef qid
-  
-  -- liftIO $ clearSyncCache defaultCheck maxCacheSize
-  liftIO $ clearSyncCache mySyncCheck (10::Int)
+  logm $ "change_table_copy_type to DiscOnlyCopies (undefined) for:" ++ (show (bucket))
 
 change_table_copy_type bucket storageType = do
   logm $ "change_table_copy_type undefined for:" ++ (show (bucket,storageType))
@@ -99,60 +102,43 @@ create_table storage name = do
 
 delete_table :: TableName -> Process ()
 delete_table name = do
-  logm "create_table undefined"
+  logm $ "delete_table:" ++ (show name)
+  liftIO $ defaultDelete $ tableNameToFileName name
 
 -- ---------------------------------------------------------------------
 
 -- |Write the value to a TCache Q
 -- (as a new entry, no check for prior existence/overwrite)
 
-dirty_write :: (Show b, Typeable b, Serialize b, Indexable b)
+dirty_write :: (Show b, Typeable b, Serialize b)
    => TableName -> b -> Process ()
 dirty_write tableName record = do
-  -- logm $ "dirty_write:" ++ (show (tableName,record))
-  let qid = getQid tableName
-  liftIO $ deleteElem qid record
-  -- logm $ "dirty_write deleteElem done:"
-  liftIO $ push qid record
-  -- logm $ "dirty_write push done:"
-  liftIO $ syncCache
-  -- logm $ "dirty_write done:" ++ (show (tableName,record))
+  logm $ "dirty_write:" ++ (show (tableName,record))
   return ()
 
-dirty_write_q :: 
+dirty_write_q ::
    TableName -> QEntry -> Process ()
 dirty_write_q tableName record = do
-  -- logm $ "dirty_write:" ++ (show (tableName,record))
-  let qid = getQueue tableName
-  liftIO $ deleteElem qid record
-  -- logm $ "dirty_write deleteElem done:"
-  liftIO $ push qid record
-  -- logm $ "dirty_write push done:"
-  liftIO $ syncCache
-  -- logm $ "dirty_write done:" ++ (show (tableName,record))
+  logm $ "dirty_write:" ++ (show (tableName,record))
+  liftIO $ defaultAppend (tableNameToFileName tableName) (encode record)
   return ()
 
 -- ---------------------------------------------------------------------
 
 dirty_read ::
-  (Show b, Indexable b,
-   Typeable c, Serialize c, Indexable c)
+  (Show b,
+   Typeable c, Serialize c)
   => TableName -> b -> Process (Maybe c)
 dirty_read tableName keyVal = do
   logm $ "dirty_read:" ++ (show (tableName,keyVal))
-  let qid = getQid tableName
-  res <- liftIO $ pickElem qid (key keyVal)
-  return res
+  return Nothing
 
 -- ---------------------------------------------------------------------
 
 dirty_all_keys :: TableName -> Process [QKey]
 dirty_all_keys tableName = do
   logm $ "dirty_all_keys:" ++ (show tableName)
-  let qid = getQueue tableName
-  res <- liftIO $ pickAll qid
-  logm $ "  dirty_all_keys:res=" ++ (show res)
-  return $ map (\(QE k _) -> k) res
+  return []
 
 -- ---------------------------------------------------------------------
 
@@ -187,46 +173,119 @@ table_info tableName infoReq = do
 
 getBucketSize :: TableName -> Process TableInfoRsp
 getBucketSize tableName = do
-  -- logm $ "getBucketSize " ++ (show tableName) 
-  let qid = (getQueue tableName) :: RefQueue QEntry
-  exists <- queueExists qid
+  -- logm $ "getBucketSize " ++ (show tableName)
+  exists <- queueExists tableName
   -- logm $ "getBucketSize exists=" ++ (show exists)
 
   case exists of
     True -> do
-      res <- liftIO $ pickAll qid
-      -- logm $ "  getBucketSize(exists) " ++ (show (tableName,res)) 
-      return $ TISize (fromIntegral $ length res)
+      -- logm $ "  getBucketSize(exists) " ++ (show (tableName,res))
+      return $ TISize 0
     False -> do
-      -- logm $ "  getBucketSize(nonexist) " 
+      -- logm $ "  getBucketSize(nonexist) "
       return $ TISize 0
 
 getStorageType :: TableName -> Process TableInfoRsp
 getStorageType tableName = do
-  let qid = (getQueue tableName ) :: RefQueue QEntry
-  e  <- queueExists qid
+  e  <- queueExists tableName
   let storage = if e then DiscCopies else StorageNone
   logm $ "getStorageType:" ++ (show (tableName,storage))
   return $ TIStorageType storage
 
+
+-- ---------------------------------------------------------------------
+
+tableNameToFileName :: TableName -> FilePath
+tableNameToFileName (TN tableName) = directoryPrefix ++ tableName
+
 -- ---------------------------------------------------------------------
 -- TCache specific functions used here
 
--- | Provide an identification of a specific Q
-getQueue :: TableName -> RefQueue QEntry
--- getQueue :: (Typeable b, Serialize b) => TableName -> RefQueue b
-getQueue (TN name) = getQRef name
+queueExists :: TableName -> Process Bool
+queueExists tableName = do
+    res <- liftIO $ doesFileExist $ tableNameToFileName tableName
+    return res
 
-getQid :: (Show a, Typeable b, Serialize b) => a -> RefQueue b
-getQid x = getQRef $ show x
+-- =====================================================================
+-- ---------------------------------------------------------------------
+-- The following functions are courtesy of TCache by agocorona
+-- https://github.com/agocorona/TCache
+
+defaultReadByKey :: FilePath -> IO (Maybe B.ByteString)
+defaultReadByKey k = iox   -- !> "defaultReadByKey"
+     where
+     iox = handle handler $ do
+             s <-  readFileStrict  k
+             return $ Just   s                                                       -- `debug` ("read "++ filename)
+
+     handler ::  IOError ->  IO (Maybe B.ByteString)
+     handler  e
+      | isAlreadyInUseError e = defaultReadByKey  k
+      | isDoesNotExistError e = return Nothing
+      | otherwise= if ("invalid" `isInfixOf` ioeGetErrorString e)
+         then
+            error $  "readResource: " ++ show e ++ " defPath and/or keyResource are not suitable for a file path"
+
+         else defaultReadByKey  k
+
+-- ---------------------------------------------------------------------
+
+defaultWrite  :: FilePath -> B.ByteString -> IO ()
+defaultWrite  filename x = safeFileOp B.writeFile  filename x
+
+defaultAppend :: FilePath -> B.ByteString -> IO ()
+defaultAppend filename x = safeFileOp B.appendFile filename x
+
+-- ---------------------------------------------------------------------
+
+safeFileOp :: (FilePath -> B.ByteString -> IO ()) -> FilePath -> B.ByteString -> IO ()
+safeFileOp op filename str= handle  handler  $ op filename str  -- !> ("write "++filename)
+     where
+     handler e-- (e :: IOError)
+       | isDoesNotExistError e=do
+                  createDirectoryIfMissing True $ take (1+(last $ elemIndices '/' filename)) filename   --maybe the path does not exist
+                  safeFileOp op filename str
+
+       | otherwise= if ("invalid" `isInfixOf` ioeGetErrorString e)
+             then
+                error  $ "writeResource: " ++ show e ++ " defPath and/or keyResource are not suitable for a file path"
+             else do
+                hPutStrLn stderr $ "defaultWriteResource:  " ++ show e ++  " in file: " ++ filename ++ " retrying"
+                safeFileOp op filename str
+
+-- ---------------------------------------------------------------------
+
+defaultDelete :: FilePath -> IO ()
+defaultDelete filename =do
+     handle (handler filename) $ removeFile filename
+     --print  ("delete "++filename)
+     where
+
+     handler :: String -> IOException -> IO ()
+     handler file e
+       | isDoesNotExistError e= return ()  --`debug` "isDoesNotExistError"
+       | isAlreadyInUseError e= do
+            hPutStrLn stderr $ "defaultDelResource: busy"  ++  " in file: " ++ filename ++ " retrying"
+--            threadDelay 100000   --`debug`"isAlreadyInUseError"
+            defaultDelete filename
+       | otherwise = do
+           hPutStrLn stderr $ "defaultDelResource:  " ++ show e ++  " in file: " ++ filename ++ " retrying"
+--           threadDelay 100000     --`debug` ("otherwise " ++ show e)
+           defaultDelete filename
 
 
+-- ---------------------------------------------------------------------
 
-queueExists :: (Typeable a, Serialize a)  => RefQueue a -> Process Bool
-queueExists tv= do
-    -- logm $ "queueExists:" ++ (show tv)
-    mdx <- liftIO $ atomically $ readDBRef tv
-    -- logm $ "queueExists:mdx done"
-    case mdx of
-     Nothing -> return False
-     Just dx -> return True
+-- | Strict read from file, needed for default file persistence
+readFileStrict :: FilePath -> IO B.ByteString
+readFileStrict f = openFile f ReadMode >>= \ h -> readIt h `finally` hClose h
+  where
+  readIt h= do
+      s   <- hFileSize h
+      let n= fromIntegral s
+      str <- B.hGet h n -- replicateM n (B.hGetChar h)
+      return str
+
+-- ---------------------------------------------------------------------
+
+

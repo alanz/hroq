@@ -23,9 +23,9 @@ import qualified Data.Map as Map
 import Data.Hroq
 import Data.HroqLogger
 import Data.HroqMnesia
-import Data.TCache
-import Data.Persistent.Collection
-import Data.TCache.Defs
+-- import Data.TCache
+-- import Data.Persistent.Collection
+-- import Data.TCache.Defs
 import Data.RefSerialize
 import Data.Time.Clock
 

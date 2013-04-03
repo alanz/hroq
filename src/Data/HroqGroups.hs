@@ -17,9 +17,9 @@ import Network.Transport.TCP (createTransportExposeInternals, defaultTCPParamete
 import qualified Data.Map as Map
 import Data.Hroq
 import Data.HroqLogger
-import Data.Persistent.Collection
+-- import Data.Persistent.Collection
 import Data.RefSerialize
-import Data.TCache
+-- import Data.TCache
 import Data.Typeable
 
 -- ---------------------------------------------------------------------

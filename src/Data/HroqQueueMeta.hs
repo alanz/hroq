@@ -32,8 +32,8 @@ import Data.HroqMnesia
 import Data.HroqStatsGatherer
 import Data.HroqUtil
 import Data.RefSerialize
-import Data.TCache
-import Data.TCache.Defs
+-- import Data.TCache
+-- import Data.TCache.Defs
 import qualified Data.ByteString.Lazy.Char8 as C8
 
 -- ---------------------------------------------------------------------
@@ -41,12 +41,14 @@ import qualified Data.ByteString.Lazy.Char8 as C8
 data Meta = MAllBuckets !QName ![TableName] !TimeStamp
             deriving (Show,Read,Typeable)
 
+{-
 instance Indexable Meta where
   key (MAllBuckets qn _ _) = show qn
 
 instance Serializable Meta where
    serialize s  = C8.pack $ show s
    deserialize = read. C8.unpack
+-}
 
 instance Serialize Meta where
   showp = showpBinary
@@ -107,7 +109,6 @@ meta_add_bucket queueName bucket = do
 
 retryCnt :: Integer
 retryCnt = 10
-
 
 -- ---------------------------------------------------------------------
 {-

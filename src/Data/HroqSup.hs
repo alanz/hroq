@@ -15,10 +15,10 @@ import Control.Concurrent
 import Data.Binary
 import Data.Maybe
 import Data.HroqLogger
-import Data.Persistent.Collection
+-- import Data.Persistent.Collection
 import Data.RefSerialize
-import Data.TCache
-import Data.TCache.Defs
+-- import Data.TCache
+-- import Data.TCache.Defs
 import Data.Typeable
 import qualified Data.Map as Map
 import qualified Data.ByteString.Lazy.Char8 as C8

@@ -23,7 +23,7 @@ library
     -- -fhpc
   build-depends:       base ==4.5.*
                      , RefSerialize
-                     , TCache
+                     -- , TCache
                      -- , Workflow
                      , binary
                      , bytestring
@@ -55,7 +55,7 @@ executable hroq
                        , distributed-process-simplelocalnet
                        , binary
                        , bytestring
-                       , TCache
+                       -- , TCache
                        , containers
                        , derive
                        , directory

@@ -27,9 +27,9 @@ import Data.HroqStatsGatherer
 import Data.HroqUtil
 import Data.List
 import Data.Maybe
-import Data.Persistent.Collection
+-- import Data.Persistent.Collection
 import Data.RefSerialize
-import Data.TCache
+-- import Data.TCache
 import Data.Typeable (Typeable)
 import Network.Transport.TCP (createTransportExposeInternals, defaultTCPParameters)
 import qualified Data.Map as Map

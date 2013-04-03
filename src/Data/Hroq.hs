@@ -28,10 +28,10 @@ import Control.Distributed.Process.Platform.Time
 -- import Control.Workflow
 import Data.Binary
 import Data.Maybe
-import Data.Persistent.Collection
+-- import Data.Persistent.Collection
 import Data.RefSerialize
-import Data.TCache
-import Data.TCache.Defs
+-- import Data.TCache
+-- import Data.TCache.Defs
 import Data.HroqLogger
 import Data.Time.Clock
 import Data.Typeable
@@ -50,6 +50,7 @@ maxBucketSizeConst = 50
 data QName = QN !String
              deriving (Typeable,Show,Read)
 
+{-
 instance Indexable QName where
   key = show 
 
@@ -57,6 +58,7 @@ instance Serializable QName where
   serialize s  = C8.pack $ show s
   deserialize = read. C8.unpack
   -- setPersist =
+-}
 
 instance Binary QName where
   put (QN s) = put s
@@ -90,13 +92,14 @@ instance Serialize QEntry where
   showp = showpBinary
   readp = readpBinary
 
+{-
 instance Indexable QEntry where
   key (QE qk _) = show qk
 
 instance Serializable QEntry where
    serialize s  = C8.pack $ show s
    deserialize = read. C8.unpack
-
+-}
 
 data ProcBucket = PB !QName
      deriving (Show)
