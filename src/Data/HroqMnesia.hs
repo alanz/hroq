@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# Language ScopedTypeVariables #-}
 module Data.HroqMnesia
   (
     TableStorage(..)
@@ -16,6 +17,8 @@ module Data.HroqMnesia
   , TableInfoReq(..)
   , TableInfoRsp(..)
   , table_info
+
+  , startHroqMnesia
 
   -- * debug
   , queueExists
@@ -50,12 +53,183 @@ import qualified Data.Map as Map
 
 -- ---------------------------------------------------------------------
 
+hroqMnesiaName = "HroqMnesia"
+
 maxCacheSize :: Int
 maxCacheSize = fromIntegral $ maxBucketSizeConst * 3
 
 directoryPrefix :: String
 directoryPrefix = ".hroqdata/"
 
+--------------------------------------------------------------------------------
+-- Types                                                                      --
+--------------------------------------------------------------------------------
+
+-- Call and Cast request types. Response types are unnecessary as the GenProcess
+-- API uses the Async API, which in turn guarantees that an async handle can
+-- /only/ give back a reply for that *specific* request through the use of an
+-- anonymous middle-man (as the sender and reciever in our case).
+
+
+--  , change_table_copy_type
+data ChangeTableCopyType = ChangeTableCopyType !TableName !TableStorage
+                           deriving (Typeable, Show)
+
+--  , create_table
+data CreateTable = CreateTable !TableStorage !TableName
+                   deriving (Typeable, Show)
+
+--  , delete_table
+data DeleteTable = DeleteTable !TableName
+                   deriving (Typeable, Show)
+
+--  , dirty_all_keys
+data DirtyAllKeys = DirtyAllKeys !TableName
+                    deriving (Typeable, Show)
+
+--  , dirty_read
+data DirtyRead = DirtyRead !TableName !Meta
+                   deriving (Typeable, Show)
+
+--  , dirty_write
+data DirtyWrite = DirtyWrite !TableName !Meta
+                   deriving (Typeable, Show)
+
+--  , dirty_write_q
+data DirtyWriteQ = DirtyWriteQ !TableName !QEntry
+                   deriving (Typeable, Show)
+
+--  , table_info
+data TableInfo = TableInfo !TableName !TableInfoReq
+                   deriving (Typeable, Show)
+
+--  , wait_for_tables
+data WaitForTables = WaitForTables ![TableName] !Delay
+                   deriving (Typeable, Show)
+
+-- ---------------------------------------------------------------------
+-- Binary instances
+
+instance Binary ChangeTableCopyType where
+  put (ChangeTableCopyType tn ts) = put tn >> put ts
+  get = do
+    tn <- get
+    ts <- get
+    return (ChangeTableCopyType tn ts)
+
+instance Binary CreateTable where
+  put (CreateTable ts tn) = put ts >> put tn
+  get = do
+    ts <- get
+    tn <- get
+    return (CreateTable ts tn)
+
+instance Binary DeleteTable where
+  put (DeleteTable tn) = put tn
+  get = do
+    tn <- get
+    return (DeleteTable tn)
+
+instance Binary DirtyAllKeys where
+  put (DirtyAllKeys tn) = put tn
+  get = do
+    tn <- get
+    return (DirtyAllKeys tn)
+
+instance Binary DirtyRead where
+  put (DirtyRead tn key) = put tn >> put key
+  get = do
+    tn <- get
+    key <- get
+    return (DirtyRead tn key)
+
+instance Binary DirtyWrite where
+  put (DirtyWrite tn key) = put tn >> put key
+  get = do
+    tn <- get
+    key <- get
+    return (DirtyWrite tn key)
+
+instance Binary DirtyWriteQ where
+  put (DirtyWriteQ tn key) = put tn >> put key
+  get = do
+    tn <- get
+    key <- get
+    return (DirtyWriteQ tn key)
+
+instance Binary TableInfo where
+  put (TableInfo tn req) = put tn >> put req
+  get = do
+    tn <- get
+    req <- get
+    return (TableInfo tn req)
+
+instance Binary WaitForTables where
+  put (WaitForTables tables delay) = put tables >> put delay
+  get = do
+    tables <- get
+    delay <- get
+    return (WaitForTables tables delay)
+
+-- ---------------------------------------------------------------------
+
+data State = MnesiaState
+  {
+  }
+
+--------------------------------------------------------------------------------
+-- API                                                                        --
+--------------------------------------------------------------------------------
+
+change_table_copy_type :: TableName -> TableStorage -> Process ()
+change_table_copy_type tableName storage = mycall (ChangeTableCopyType tableName storage)
+
+create_table :: TableStorage -> TableName -> Process ()
+create_table storage tableName = mycall (CreateTable storage tableName)
+
+delete_table :: TableName -> Process ()
+delete_table tableName = mycall (DeleteTable tableName)
+
+dirty_all_keys :: TableName -> Process [QKey]
+dirty_all_keys tableName = mycall (DirtyAllKeys tableName)
+
+dirty_read :: TableName -> Meta -> Process (Maybe Meta)
+dirty_read tableName key = mycall (DirtyRead tableName key)
+
+dirty_write :: TableName -> Meta -> Process ()
+dirty_write tableName val = mycall (DirtyWrite tableName val)
+
+dirty_write_q :: TableName -> QEntry -> Process ()
+dirty_write_q tablename val = mycall (DirtyWriteQ tablename val)
+
+table_info :: TableName -> TableInfoReq -> Process TableInfoRsp
+table_info tableName req = mycall (TableInfo tableName req)
+
+wait_for_tables :: [TableName] -> Delay -> Process ()
+wait_for_tables tables delay = mycall (WaitForTables tables delay)
+
+-- | Start a Queue server
+startHroqMnesia :: a -> Process ProcessId
+startHroqMnesia initParams = do
+  let server = serverDefinition
+  sid <- spawnLocal $ start initParams initFunc server >> return ()
+  register hroqMnesiaName sid
+  return sid
+
+-- init callback
+initFunc :: InitHandler a State
+initFunc _ = do
+  return $ InitOk MnesiaState Infinity
+
+getSid :: Process ProcessId
+getSid = do
+  -- deliberately blow up if not registered
+  Just pid <- whereis hroqMnesiaName
+  return pid
+
+mycall op = do
+  sid <- getSid
+  call sid op
 
 -- ---------------------------------------------------------------------
 
@@ -64,16 +238,94 @@ data TableStorage = DiscOnlyCopies
                   | StorageNone
                   deriving (Show)
 
-data TableName = TN !String
-                 deriving (Show,Read,Typeable,Eq)
+instance Binary TableStorage where
+  put DiscOnlyCopies = put (1::Word8)
+  put DiscCopies     = put (2::Word8)
+  put StorageNone    = put (3::Word8)
 
-instance Binary TableName where
-  put (TN s) = put s
   get = do
-    s <- get
-    return (TN s)
+    v <- get
+    case v of
+      (1::Word8) -> return DiscOnlyCopies
+      (2::Word8) -> return DiscCopies
+      (3::Word8) -> return StorageNone
+
+
+--------------------------------------------------------------------------------
+-- Implementation                                                             --
+--------------------------------------------------------------------------------
+
+serverDefinition :: ProcessDefinition State
+serverDefinition = defaultProcess {
+     apiHandlers = [
+          handleCall handleChangeTableCopyType
+        , handleCall handleCreateTable
+        , handleCall handleDeleteTable
+        , handleCall handleDirtyAllKeys
+        , handleCall handleDirtyRead
+        , handleCall handleDirtyWrite
+        , handleCall handleDirtyWriteQ
+        , handleCall handleTableInfo
+        , handleCall handleWaitForTables
+        ]
+    , infoHandlers =
+        [
+        -- handleInfo_ (\(ProcessMonitorNotification _ _ r) -> logm $ show r >> continue_)
+         handleInfo (\dict (ProcessMonitorNotification _ _ r) -> do {logm $ show r; continue dict })
+        ]
+     , timeoutHandler = \_ _ -> stop $ TerminateOther "timeout az"
+    } :: ProcessDefinition State
 
 -- ---------------------------------------------------------------------
+-- Handlers
+
+handleChangeTableCopyType :: State -> ChangeTableCopyType -> Process (ProcessReply State ())
+handleChangeTableCopyType s (ChangeTableCopyType tableName storage) = do
+    do_change_table_copy_type tableName storage
+    reply () s
+
+handleCreateTable :: State -> CreateTable -> Process (ProcessReply State ())
+handleCreateTable s (CreateTable storage tableName) = do
+    do_create_table storage tableName
+    reply () s
+
+handleDeleteTable :: State -> DeleteTable -> Process (ProcessReply State ())
+handleDeleteTable s (DeleteTable tableName) = do
+    do_delete_table tableName
+    reply () s
+
+handleDirtyAllKeys :: State -> DirtyAllKeys -> Process (ProcessReply State [QKey])
+handleDirtyAllKeys s (DirtyAllKeys tableName) = do
+    res <- do_dirty_all_keys tableName
+    reply res s
+
+handleDirtyRead :: State -> DirtyRead -> Process (ProcessReply State (Maybe Meta))
+handleDirtyRead s (DirtyRead tableName key) = do
+    res <- do_dirty_read tableName key
+    reply res s
+
+handleDirtyWrite :: State -> DirtyWrite -> Process (ProcessReply State ())
+handleDirtyWrite s (DirtyWrite tableName val) = do
+    do_dirty_write tableName val
+    reply () s
+
+handleDirtyWriteQ :: State -> DirtyWriteQ -> Process (ProcessReply State ())
+handleDirtyWriteQ s (DirtyWriteQ tableName val) = do
+    do_dirty_write_q tableName val
+    reply () s
+
+handleTableInfo :: State -> TableInfo -> Process (ProcessReply State TableInfoRsp)
+handleTableInfo s (TableInfo tableName req) = do
+    res <- do_table_info tableName req
+    reply res s
+
+handleWaitForTables :: State -> WaitForTables -> Process (ProcessReply State ())
+handleWaitForTables s (WaitForTables tables delay) = do
+    do_wait_for_tables tables delay
+    reply () s
+
+-- ---------------------------------------------------------------------
+
 
 {-
 data SKey = SK String
@@ -82,11 +334,11 @@ data Storable a = Store SKey a
                  deriving (Show,Read,Typeable)
 -}
 
-change_table_copy_type :: TableName -> TableStorage -> Process ()
-change_table_copy_type bucket DiscOnlyCopies = do
+do_change_table_copy_type :: TableName -> TableStorage -> Process ()
+do_change_table_copy_type bucket DiscOnlyCopies = do
   logm $ "change_table_copy_type to DiscOnlyCopies (undefined) for:" ++ (show (bucket))
 
-change_table_copy_type bucket storageType = do
+do_change_table_copy_type bucket storageType = do
   logm $ "change_table_copy_type undefined for:" ++ (show (bucket,storageType))
 
 mySyncCheck :: Integer -> Integer -> Integer -> Bool
@@ -94,14 +346,14 @@ mySyncCheck _ _ _ = True
 
 -- ---------------------------------------------------------------------
 
-create_table :: TableStorage -> TableName -> Process ()
-create_table storage name = do
+do_create_table :: TableStorage -> TableName -> Process ()
+do_create_table storage name = do
   logm "create_table undefined"
 
 -- ---------------------------------------------------------------------
 
-delete_table :: TableName -> Process ()
-delete_table name = do
+do_delete_table :: TableName -> Process ()
+do_delete_table name = do
   logm $ "delete_table:" ++ (show name)
   liftIO $ defaultDelete $ tableNameToFileName name
 
@@ -110,40 +362,38 @@ delete_table name = do
 -- |Write the value to a TCache Q
 -- (as a new entry, no check for prior existence/overwrite)
 
-dirty_write :: (Show b, Typeable b, Serialize b)
-   => TableName -> b -> Process ()
-dirty_write tableName record = do
-  logm $ "dirty_write:" ++ (show (tableName,record))
+do_dirty_write :: -- (Show b, Typeable b, Serialize b)
+   TableName -> b -> Process ()
+do_dirty_write tableName record = do
+  logm $ "dirty_write:" ++ (show (tableName)) -- ,record))
   return ()
 
-dirty_write_q ::
+do_dirty_write_q ::
    TableName -> QEntry -> Process ()
-dirty_write_q tableName record = do
+do_dirty_write_q tableName record = do
   logm $ "dirty_write:" ++ (show (tableName,record))
   liftIO $ defaultAppend (tableNameToFileName tableName) (encode record)
   return ()
 
 -- ---------------------------------------------------------------------
 
-dirty_read ::
-  (Show b,
-   Typeable c, Serialize c)
+do_dirty_read :: (Binary c)
   => TableName -> b -> Process (Maybe c)
-dirty_read tableName keyVal = do
-  logm $ "dirty_read:" ++ (show (tableName,keyVal))
+do_dirty_read tableName keyVal = do
+  logm $ "dirty_read:" ++ (show (tableName)) -- ,keyVal))
   return Nothing
 
 -- ---------------------------------------------------------------------
 
-dirty_all_keys :: TableName -> Process [QKey]
-dirty_all_keys tableName = do
+do_dirty_all_keys :: TableName -> Process [QKey]
+do_dirty_all_keys tableName = do
   logm $ "dirty_all_keys:" ++ (show tableName)
   return []
 
 -- ---------------------------------------------------------------------
 
-wait_for_tables :: [TableName] -> Delay -> Process ()
-wait_for_tables tables maxWait = do
+do_wait_for_tables :: [TableName] -> Delay -> Process ()
+do_wait_for_tables tables maxWait = do
   logm $ "wait_for_tables undefined"
 
 
@@ -153,19 +403,43 @@ data TableInfoReq = TableInfoSize
                   | TableInfoStorageType
                     deriving (Show)
 
+instance Binary TableInfoReq where
+  put TableInfoSize = put (1::Word8)
+  put TableInfoStorageType = put (2::Word8)
+
+  get = do
+    v <- get
+    case v of
+      (1::Word8) -> return TableInfoSize
+      (2::Word8) -> return TableInfoStorageType
+
 data TableInfoRsp = TISize !Integer
                   | TIStorageType !TableStorage
                   | TIError
-                    deriving (Show)
+                    deriving (Show,Typeable)
 
-table_info :: TableName -> TableInfoReq -> Process TableInfoRsp
-table_info tableName TableInfoSize        = do
+instance Binary TableInfoRsp where
+  put (TISize v)         = put (1::Word8) >> put v
+  put (TIStorageType ts) = put (2::Word8) >> put ts
+  put TIError            = put (3::Word8)
+
+  get = do
+    t <- get
+    case t of
+      (1::Word8) -> do {v  <- get; return (TISize v)}
+      (2::Word8) -> do {ts <- get; return (TIStorageType ts)}
+      (3::Word8) -> return TIError
+
+-- ---------------------------------------------------------------------
+
+do_table_info :: TableName -> TableInfoReq -> Process TableInfoRsp
+do_table_info tableName TableInfoSize        = do
   -- logm $ "table_info:TableInfoSize" ++ (show (tableName))
   getBucketSize  tableName
-table_info tableName TableInfoStorageType = do
+do_table_info tableName TableInfoStorageType = do
   -- logm $ "table_info:TableInfoStorageType" ++ (show (tableName))
   getStorageType tableName
-table_info tableName infoReq = do
+do_table_info tableName infoReq = do
   -- logm $ "table_info undefined:" ++ (show (tableName,infoReq))
   return TIError
 

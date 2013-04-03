@@ -96,6 +96,8 @@ retry_dirty_read n tableName key = do
       liftIO $ threadDelay (100*1000) -- Haskell sleep takes us
       retry_dirty_read (n - 1) tableName key
 -}
+retry_dirty_read ::
+  Integer -> TableName -> Meta -> Process (Maybe Meta)
 retry_dirty_read n tableName key = do
   -- logm $ "retry_dirty_read:" ++ (show (n,tableName,key))
   dirty_read tableName key

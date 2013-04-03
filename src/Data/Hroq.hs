@@ -6,6 +6,8 @@ module Data.Hroq
   , QValue(..)
   , QEntry(..)
   , QName(..)
+  , Meta(..)
+  , TableName(..)
   , TimeStamp
   , ioGetTimeStamp
   , getTimeStamp
@@ -100,6 +102,46 @@ instance Serializable QEntry where
    serialize s  = C8.pack $ show s
    deserialize = read. C8.unpack
 -}
+
+-- ---------------------------------------------------------------------
+
+data Meta = MAllBuckets !QName ![TableName] !TimeStamp
+            deriving (Show,Read,Typeable)
+
+{-
+instance Indexable Meta where
+  key (MAllBuckets qn _ _) = show qn
+
+instance Serializable Meta where
+   serialize s  = C8.pack $ show s
+   deserialize = read. C8.unpack
+
+instance Serialize Meta where
+  showp = showpBinary
+  readp = readpBinary
+-}
+
+instance Binary Meta where
+  put (MAllBuckets q tns ts) = put q >> put tns >> put ts
+  get = do
+    q <- get
+    tns <- get
+    ts <- get
+    return $ MAllBuckets q tns ts
+
+
+-- ---------------------------------------------------------------------
+
+data TableName = TN !String
+                 deriving (Show,Read,Typeable,Eq)
+
+instance Binary TableName where
+  put (TN s) = put s
+  get = do
+    s <- get
+    return (TN s)
+
+-- ---------------------------------------------------------------------
 
 data ProcBucket = PB !QName
      deriving (Show)

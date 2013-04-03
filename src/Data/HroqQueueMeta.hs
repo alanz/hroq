@@ -6,7 +6,6 @@ module Data.HroqQueueMeta
   , meta_all_buckets
   , meta_del_bucket
 
-  , Meta(..)
   , eroq_queue_meta_table
   )
   where
@@ -22,7 +21,6 @@ import Data.DeriveTH
 import Data.List
 import Data.Typeable (Typeable)
 import Network.Transport.TCP (createTransportExposeInternals, defaultTCPParameters)
--- import qualified Data.ByteString.Lazy as B
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Data.Hroq
@@ -32,35 +30,7 @@ import Data.HroqMnesia
 import Data.HroqStatsGatherer
 import Data.HroqUtil
 import Data.RefSerialize
--- import Data.TCache
--- import Data.TCache.Defs
 import qualified Data.ByteString.Lazy.Char8 as C8
-
--- ---------------------------------------------------------------------
-
-data Meta = MAllBuckets !QName ![TableName] !TimeStamp
-            deriving (Show,Read,Typeable)
-
-{-
-instance Indexable Meta where
-  key (MAllBuckets qn _ _) = show qn
-
-instance Serializable Meta where
-   serialize s  = C8.pack $ show s
-   deserialize = read. C8.unpack
--}
-
-instance Serialize Meta where
-  showp = showpBinary
-  readp = readpBinary
-
-instance Binary Meta where
-  put (MAllBuckets q tns ts) = put q >> put tns >> put ts
-  get = do
-    q <- get
-    tns <- get
-    ts <- get
-    return $ MAllBuckets q tns ts
 
 -- ---------------------------------------------------------------------
 
@@ -95,7 +65,7 @@ add_bucket(QName, BucketId) ->
 meta_add_bucket :: QName -> TableName -> Process [TableName]
 meta_add_bucket queueName bucket = do
   logm $ "meta_add_bucket:" ++ (show (queueName,bucket))
-  rv <- retry_dirty_read retryCnt eroq_queue_meta_table queueName
+  rv <- retry_dirty_read retryCnt eroq_queue_meta_table (MAllBuckets queueName [] nullTimeStamp)
   case rv of
     Nothing -> do
        timestamp <- getTimeStamp
@@ -126,7 +96,7 @@ all_buckets(QName) ->
 meta_all_buckets :: QName -> Process [TableName]
 meta_all_buckets queueName = do
   logm $ "meta_all_buckets :" ++ (show queueName)
-  v <- dirty_read eroq_queue_meta_table queueName
+  v <- dirty_read eroq_queue_meta_table (MAllBuckets queueName [] nullTimeStamp)
   logm $ "meta_all_buckets v:" ++ (show v)
   case v of
     Nothing -> return []
