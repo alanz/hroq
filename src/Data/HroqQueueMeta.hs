@@ -6,7 +6,7 @@ module Data.HroqQueueMeta
   , meta_all_buckets
   , meta_del_bucket
 
-  , eroq_queue_meta_table
+  , hroq_queue_meta_table
   )
   where
 
@@ -34,8 +34,8 @@ import qualified Data.ByteString.Lazy.Char8 as C8
 
 -- ---------------------------------------------------------------------
 
-eroq_queue_meta_table :: TableName
-eroq_queue_meta_table = TN "eroq_queue_meta_table"
+hroq_queue_meta_table :: TableName
+hroq_queue_meta_table = TN "hroq_queue_meta_table"
 
 -- ---------------------------------------------------------------------
 {-
@@ -65,16 +65,16 @@ add_bucket(QName, BucketId) ->
 meta_add_bucket :: QName -> TableName -> Process [TableName]
 meta_add_bucket queueName bucket = do
   logm $ "meta_add_bucket:" ++ (show (queueName,bucket))
-  rv <- retry_dirty_read retryCnt eroq_queue_meta_table (MAllBuckets queueName [] nullTimeStamp)
+  rv <- retry_dirty_read retryCnt hroq_queue_meta_table (MAllBuckets queueName [] nullTimeStamp)
   case rv of
     Nothing -> do
        timestamp <- getTimeStamp
-       retry_dirty_write retryCnt eroq_queue_meta_table  (MAllBuckets queueName [bucket] timestamp)
+       retry_dirty_write retryCnt hroq_queue_meta_table  (MAllBuckets queueName [bucket] timestamp)
        return [bucket]
     Just (MAllBuckets _ b _) -> do
        let newBuckets = b ++ [bucket]
        timestamp <- getTimeStamp
-       retry_dirty_write retryCnt eroq_queue_meta_table  (MAllBuckets queueName newBuckets timestamp)
+       retry_dirty_write retryCnt hroq_queue_meta_table  (MAllBuckets queueName newBuckets timestamp)
        return newBuckets
 
 retryCnt :: Integer
@@ -96,7 +96,7 @@ all_buckets(QName) ->
 meta_all_buckets :: QName -> Process [TableName]
 meta_all_buckets queueName = do
   logm $ "meta_all_buckets :" ++ (show queueName)
-  v <- dirty_read eroq_queue_meta_table (MAllBuckets queueName [] nullTimeStamp)
+  v <- dirty_read hroq_queue_meta_table (MAllBuckets queueName [] nullTimeStamp)
   logm $ "meta_all_buckets v:" ++ (show v)
   case v of
     Nothing -> return []

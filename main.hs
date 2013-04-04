@@ -46,34 +46,50 @@ main = do
 
 worker :: Process ()
 worker = do
+  mnesiaSid <- startHroqMnesia ()
+  logm "mnesia started"
+
+  ms1 <- get_state
+  logm $ "mnesia state ms1:" ++ (show ms1)
+
   App.start_app
+  logm "app started"
+
+  ms2 <- get_state
+  logm $ "mnesia state ms2:" ++ (show ms2)
 
   let qNameA = QN "queue_a"
   let qNameB = QN "queue_b"
 
-  qSida <- startQueue (qNameA,"appinfo","blah")
-  say $ "queue started:" ++ (show qSida)
+  -- qSida <- startQueue (qNameA,"appinfo","blah")
+  -- logm $ "queue started:" ++ (show qSida)
 
   qSidb <- startQueue (qNameB,"appinfo","blah")
-  say $ "queue started:" ++ (show qSidb)
+  logm $ "queue started:" ++ (show qSidb)
 
-  say "worker started all"
+  ms3 <- get_state
+  logm $ "mnesia state ms3:" ++ (show ms3)
+
+  logm "worker started all"
 
   -- enqueue qSida qNameA (qval "foo1")
   -- enqueue qSida qNameA (qval "foo2")
-  -- say "enqueue done a"
+  -- logm "enqueue done a"
 
   -- mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..8000]
   -- mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..2000]
   -- mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..800]
-  mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..80]
-  say "enqueue done b"
+  mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..8]
+  logm "enqueue done b"
 
   -- r <- enqueue_one_message (QN "tablea" ) (qval "bar") s
 
+  ms4 <- get_state
+  logm $ "mnesia state ms4:" ++ (show ms4)
+
   liftIO $ threadDelay (3*1000000) -- 3 seconds
 
-  say $ "blurble"
+  logm $ "blurble"
 
   -- liftIO $ threadDelay (10*60*1000000) -- Ten minutes
   return ()
@@ -83,7 +99,7 @@ worker = do
 startLocalNode :: IO LocalNode
 startLocalNode = do
     -- [role, host, port] <- getArgs
-  let [role, host, port] = ["foo","127.0.0.1", "10510"]
+  let [role, host, port] = ["foo","127.0.0.1", "10513"]
   -- Right transport <- createTransport host port defaultTCPParameters
   Right (transport,_internals) <- createTransportExposeInternals host port defaultTCPParameters
   node <- newLocalNode transport initRemoteTable

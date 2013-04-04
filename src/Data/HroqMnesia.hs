@@ -3,7 +3,6 @@
 module Data.HroqMnesia
   (
     TableStorage(..)
-  , TableName(..)
   -- , Storable(..)
   , change_table_copy_type
   , create_table
@@ -14,6 +13,7 @@ module Data.HroqMnesia
   , dirty_all_keys
   , wait_for_tables
 
+  , RecordType(..)
   , TableInfoReq(..)
   , TableInfoRsp(..)
   , table_info
@@ -22,6 +22,7 @@ module Data.HroqMnesia
 
   -- * debug
   , queueExists
+  , get_state
   )
   where
 
@@ -33,14 +34,14 @@ import Control.Distributed.Process.Platform.Async
 import Control.Distributed.Process.Platform.ManagedProcess hiding (runProcess)
 import Control.Distributed.Process.Platform.Time
 import Control.Exception as Exception
-import Control.Monad(when,replicateM)
+import Control.Monad(when,replicateM,foldM,liftM3,liftM2,liftM)
 import Data.Binary
 import Data.DeriveTH
 import Data.Hroq
 import Data.HroqLogger
 import Data.IORef
 import Data.List(elemIndices,isInfixOf)
-import Data.Maybe(fromJust)
+import Data.Maybe(fromJust,fromMaybe)
 import Data.RefSerialize
 import Data.Typeable (Typeable)
 import Network.Transport.TCP (createTransportExposeInternals, defaultTCPParameters)
@@ -76,7 +77,7 @@ data ChangeTableCopyType = ChangeTableCopyType !TableName !TableStorage
                            deriving (Typeable, Show)
 
 --  , create_table
-data CreateTable = CreateTable !TableStorage !TableName
+data CreateTable = CreateTable !TableStorage !TableName !RecordType
                    deriving (Typeable, Show)
 
 --  , delete_table
@@ -107,6 +108,10 @@ data TableInfo = TableInfo !TableName !TableInfoReq
 data WaitForTables = WaitForTables ![TableName] !Delay
                    deriving (Typeable, Show)
 
+-- , get_state
+data GetState = GetState
+                deriving (Typeable,Show)
+
 -- ---------------------------------------------------------------------
 -- Binary instances
 
@@ -118,64 +123,99 @@ instance Binary ChangeTableCopyType where
     return (ChangeTableCopyType tn ts)
 
 instance Binary CreateTable where
-  put (CreateTable ts tn) = put ts >> put tn
-  get = do
-    ts <- get
-    tn <- get
-    return (CreateTable ts tn)
+  put (CreateTable ts tn rt) = put ts >> put tn >> put rt
+  get = liftM3 CreateTable get get get
 
 instance Binary DeleteTable where
   put (DeleteTable tn) = put tn
-  get = do
-    tn <- get
-    return (DeleteTable tn)
+  get = liftM DeleteTable get
 
 instance Binary DirtyAllKeys where
   put (DirtyAllKeys tn) = put tn
-  get = do
-    tn <- get
-    return (DirtyAllKeys tn)
+  get = liftM DirtyAllKeys get
 
 instance Binary DirtyRead where
   put (DirtyRead tn key) = put tn >> put key
-  get = do
-    tn <- get
-    key <- get
-    return (DirtyRead tn key)
+  get = liftM2 DirtyRead get get
 
 instance Binary DirtyWrite where
   put (DirtyWrite tn key) = put tn >> put key
-  get = do
-    tn <- get
-    key <- get
-    return (DirtyWrite tn key)
+  get = liftM2 DirtyWrite get get
 
 instance Binary DirtyWriteQ where
   put (DirtyWriteQ tn key) = put tn >> put key
-  get = do
-    tn <- get
-    key <- get
-    return (DirtyWriteQ tn key)
+  get = liftM2 DirtyWriteQ get get
 
 instance Binary TableInfo where
   put (TableInfo tn req) = put tn >> put req
-  get = do
-    tn <- get
-    req <- get
-    return (TableInfo tn req)
+  get = liftM2 TableInfo get get
 
 instance Binary WaitForTables where
   put (WaitForTables tables delay) = put tables >> put delay
+  get = liftM2 WaitForTables get get
+
+instance Binary GetState where
+  put GetState = putWord8 1
   get = do
-    tables <- get
-    delay <- get
-    return (WaitForTables tables delay)
+          v <- getWord8
+          case v of
+            1 -> return GetState
 
 -- ---------------------------------------------------------------------
 
+data HroqMnesiaResult = HMResOk
+                      | HMResTimeout [TableName]
+                      | HMResError String
+                      deriving (Typeable,Show)
+
+instance Binary HroqMnesiaResult where
+  put HMResOk           = putWord8 1
+  put (HMResTimeout ts) = putWord8 2 >> put ts
+  put (HMResError s)    = putWord8 3 >> put s
+
+  get = do
+          v <- getWord8
+          case v of
+            1 -> return HMResOk
+            2 -> liftM  HMResTimeout get
+            3 -> liftM  HMResError get
+
+-- ---------------------------------------------------------------------
+-- State related functions
+
+data TableMeta = TableMeta
+  { tSize       :: Maybe Integer -- ^Size of stored table, if known
+  , tStorage    :: TableStorage
+  , tRecordType :: RecordType
+  } deriving (Show,Typeable)
+
 data State = MnesiaState
   {
+  sTableInfo :: Map.Map TableName TableMeta
+  } deriving (Show,Typeable)
+
+instance Binary TableMeta where
+  put (TableMeta size storage typ) = put size >> put storage >> put typ
+  get = liftM3 TableMeta get get get
+
+instance Binary State where
+  put (MnesiaState ti) = put ti
+  get = liftM MnesiaState get
+
+getMetaForTable :: State -> TableName -> Maybe (TableMeta)
+getMetaForTable s tableName = Map.lookup tableName (sTableInfo s)
+
+getMetaForTableDefault s tableName =
+  fromMaybe (TableMeta Nothing StorageNone RecordTypeQueueEntry)
+           $ getMetaForTable s tableName
+
+-- ---------------------------------------------------------------------
+{-
+-- may need this, to store the meta information permanently
+data MnesiaSchema = Schema
+  { sTables = Map.Map TableName
   }
+-}
 
 --------------------------------------------------------------------------------
 -- API                                                                        --
@@ -184,8 +224,8 @@ data State = MnesiaState
 change_table_copy_type :: TableName -> TableStorage -> Process ()
 change_table_copy_type tableName storage = mycall (ChangeTableCopyType tableName storage)
 
-create_table :: TableStorage -> TableName -> Process ()
-create_table storage tableName = mycall (CreateTable storage tableName)
+create_table :: TableStorage -> TableName -> RecordType -> Process ()
+create_table storage tableName recordType = mycall (CreateTable storage tableName recordType)
 
 delete_table :: TableName -> Process ()
 delete_table tableName = mycall (DeleteTable tableName)
@@ -208,6 +248,9 @@ table_info tableName req = mycall (TableInfo tableName req)
 wait_for_tables :: [TableName] -> Delay -> Process ()
 wait_for_tables tables delay = mycall (WaitForTables tables delay)
 
+get_state :: Process State
+get_state = mycall (GetState)
+
 -- | Start a Queue server
 startHroqMnesia :: a -> Process ProcessId
 startHroqMnesia initParams = do
@@ -219,7 +262,7 @@ startHroqMnesia initParams = do
 -- init callback
 initFunc :: InitHandler a State
 initFunc _ = do
-  return $ InitOk MnesiaState Infinity
+  return $ InitOk (MnesiaState Map.empty) Infinity
 
 getSid :: Process ProcessId
 getSid = do
@@ -236,7 +279,7 @@ mycall op = do
 data TableStorage = DiscOnlyCopies
                   | DiscCopies
                   | StorageNone
-                  deriving (Show)
+                  deriving (Show,Ord,Eq)
 
 instance Binary TableStorage where
   put DiscOnlyCopies = put (1::Word8)
@@ -249,6 +292,25 @@ instance Binary TableStorage where
       (1::Word8) -> return DiscOnlyCopies
       (2::Word8) -> return DiscCopies
       (3::Word8) -> return StorageNone
+
+-- ---------------------------------------------------------------------
+
+data RecordType = RecordTypeMeta
+                | RecordTypeQueueEntry
+                | RecordTypeConsumerLocal
+                deriving (Show)
+
+instance Binary RecordType where
+  put RecordTypeMeta          = put (1::Word8)
+  put RecordTypeQueueEntry    = put (2::Word8)
+  put RecordTypeConsumerLocal = put (3::Word8)
+
+  get = do
+    v <- getWord8
+    case v of
+      1 -> return RecordTypeMeta
+      2 -> return RecordTypeQueueEntry
+      3 -> return RecordTypeConsumerLocal
 
 
 --------------------------------------------------------------------------------
@@ -267,6 +329,9 @@ serverDefinition = defaultProcess {
         , handleCall handleDirtyWriteQ
         , handleCall handleTableInfo
         , handleCall handleWaitForTables
+
+        -- * Debug routines
+        , handleCall handleGetState
         ]
     , infoHandlers =
         [
@@ -285,9 +350,9 @@ handleChangeTableCopyType s (ChangeTableCopyType tableName storage) = do
     reply () s
 
 handleCreateTable :: State -> CreateTable -> Process (ProcessReply State ())
-handleCreateTable s (CreateTable storage tableName) = do
-    do_create_table storage tableName
-    reply () s
+handleCreateTable s (CreateTable storage tableName recordType) = do
+    s' <- do_create_table s storage tableName recordType
+    reply () s'
 
 handleDeleteTable :: State -> DeleteTable -> Process (ProcessReply State ())
 handleDeleteTable s (DeleteTable tableName) = do
@@ -311,18 +376,21 @@ handleDirtyWrite s (DirtyWrite tableName val) = do
 
 handleDirtyWriteQ :: State -> DirtyWriteQ -> Process (ProcessReply State ())
 handleDirtyWriteQ s (DirtyWriteQ tableName val) = do
-    do_dirty_write_q tableName val
-    reply () s
+    s' <- do_dirty_write_q s tableName val
+    reply () s'
 
 handleTableInfo :: State -> TableInfo -> Process (ProcessReply State TableInfoRsp)
 handleTableInfo s (TableInfo tableName req) = do
-    res <- do_table_info tableName req
+    res <- do_table_info s tableName req
     reply res s
 
 handleWaitForTables :: State -> WaitForTables -> Process (ProcessReply State ())
 handleWaitForTables s (WaitForTables tables delay) = do
-    do_wait_for_tables tables delay
-    reply () s
+    s' <- do_wait_for_tables s tables delay
+    reply () s'
+
+handleGetState :: State -> GetState -> Process (ProcessReply State State)
+handleGetState s _ = reply s s
 
 -- ---------------------------------------------------------------------
 
@@ -346,9 +414,15 @@ mySyncCheck _ _ _ = True
 
 -- ---------------------------------------------------------------------
 
-do_create_table :: TableStorage -> TableName -> Process ()
-do_create_table storage name = do
-  logm "create_table undefined"
+-- |Record the table details into the meta information.
+-- TODO: store this in the schema table too.
+do_create_table :: State -> TableStorage -> TableName -> RecordType -> Process State
+do_create_table s storage name recordType = do
+  logm $ "create_table:" ++ (show (name,storage,recordType))
+  -- TODO: check for clash with pre-existing, both in meta/state and
+  --       on disk
+  let ti' = Map.insert name (TableMeta Nothing storage recordType) (sTableInfo s)
+  return $ s { sTableInfo = ti' }
 
 -- ---------------------------------------------------------------------
 
@@ -359,21 +433,27 @@ do_delete_table name = do
 
 -- ---------------------------------------------------------------------
 
--- |Write the value to a TCache Q
--- (as a new entry, no check for prior existence/overwrite)
-
-do_dirty_write :: -- (Show b, Typeable b, Serialize b)
-   TableName -> b -> Process ()
+-- |Write the value.
+-- Currently only used for the meta table, which only has one entry in it
+do_dirty_write :: TableName -> Meta -> Process ()
 do_dirty_write tableName record = do
-  logm $ "dirty_write:" ++ (show (tableName)) -- ,record))
+  logm $ "dirty_write:" ++ (show (tableName,record))
+  liftIO $ defaultWrite (tableNameToFileName tableName) (encode record)
   return ()
 
 do_dirty_write_q ::
-   TableName -> QEntry -> Process ()
-do_dirty_write_q tableName record = do
+   State -> TableName -> QEntry -> Process State
+do_dirty_write_q s tableName record = do
   logm $ "dirty_write:" ++ (show (tableName,record))
   liftIO $ defaultAppend (tableNameToFileName tableName) (encode record)
-  return ()
+
+  -- Add one to the Q size
+  -- TODO: harvest this
+  let curr = getMetaForTableDefault s tableName
+  let cnt = (fromMaybe 0 (tSize curr)) + 1
+  let ti' = Map.insert tableName (curr { tSize = Just cnt }) (sTableInfo s)
+
+  return $ s {sTableInfo = ti'}
 
 -- ---------------------------------------------------------------------
 
@@ -392,10 +472,45 @@ do_dirty_all_keys tableName = do
 
 -- ---------------------------------------------------------------------
 
-do_wait_for_tables :: [TableName] -> Delay -> Process ()
-do_wait_for_tables tables maxWait = do
-  logm $ "wait_for_tables undefined"
+do_wait_for_tables :: State -> [TableName] -> Delay -> Process State
+do_wait_for_tables s tables _maxWait = do
+  logm $ "wait_for_tables"
+  r <- mapM (waitForTable s ) tables
+  -- r <- waitForTable s (head tables)
+  logm $ "do_wait_for_tables:r=" ++ (show r)
+  -- logm $ "do_wait_for_tables:blah"
+  return s
 
+  -- where
+waitForTable :: State -> TableName -> Process (TableName,TableMeta)
+waitForTable s table = do
+      logm $ "waitForTable:" ++ (show table)
+      let mm = getMetaForTable s table
+      logm $ "waitForTable:me=" ++ (show mm)
+      let (TableMeta _ms storage recordType) = fromMaybe (TableMeta Nothing StorageNone RecordTypeMeta) mm
+      exists  <- queueExists table
+      logm $ "wait_for_tables:(table,exists)=" ++ (show (table,exists))
+      case exists of
+        True -> do
+          numRecords <-
+            case recordType of
+              RecordTypeMeta       -> do
+                ms <- liftIO ((decodeFile (tableNameToFileName table)) :: IO [Meta])
+                logm $ "wait_for_tables:ms=" ++ (show ms)
+                return $ fromIntegral $length ms
+              RecordTypeQueueEntry -> do
+                qs <- liftIO ((decodeFile (tableNameToFileName table)) :: IO [QEntry])
+                logm $ "wait_for_tables:qs=" ++ (show qs)
+                return $ fromIntegral $length qs
+              _ -> do logm "do_wait_for_tables:unknown record type"
+                      return 0
+          return (table,TableMeta (Just numRecords) storage recordType)
+        False -> do
+          logm $ "wait_for_tables:False, done:" ++ (show table)
+          return (table,TableMeta Nothing StorageNone recordType)
+      -- logm $ "waitForTable done:res=" ++ (show res)
+      -- return res
+      -- return (table, TableMeta Nothing StorageNone RecordTypeMeta)
 
 -- ---------------------------------------------------------------------
 
@@ -432,32 +547,41 @@ instance Binary TableInfoRsp where
 
 -- ---------------------------------------------------------------------
 
-do_table_info :: TableName -> TableInfoReq -> Process TableInfoRsp
-do_table_info tableName TableInfoSize        = do
+do_table_info :: State -> TableName -> TableInfoReq -> Process TableInfoRsp
+do_table_info s tableName TableInfoSize        = do
   -- logm $ "table_info:TableInfoSize" ++ (show (tableName))
-  getBucketSize  tableName
-do_table_info tableName TableInfoStorageType = do
+  getBucketSize s tableName
+do_table_info s tableName TableInfoStorageType = do
   -- logm $ "table_info:TableInfoStorageType" ++ (show (tableName))
   getStorageType tableName
-do_table_info tableName infoReq = do
+do_table_info s tableName infoReq = do
   -- logm $ "table_info undefined:" ++ (show (tableName,infoReq))
   return TIError
 
 -- ---------------------------------------------------------------------
 
-getBucketSize :: TableName -> Process TableInfoRsp
-getBucketSize tableName = do
-  -- logm $ "getBucketSize " ++ (show tableName)
+getBucketSize :: State -> TableName -> Process TableInfoRsp
+getBucketSize s tableName = do
+  logm $ "getBucketSize " ++ (show tableName)
+  let mm = getMetaForTable s tableName
+  case mm of
+    Nothing -> do
+      logm $ "  getBucketSize(nonexist) "
+      return $ TISize 0
+    Just (TableMeta msize _ _) -> do
+      logm $ "  getBucketSize(exists) " ++ (show (tableName,msize))
+      return $ TISize $ fromMaybe 0 msize
+{-
   exists <- queueExists tableName
-  -- logm $ "getBucketSize exists=" ++ (show exists)
-
+  logm $ "getBucketSize exists=" ++ (show exists)
   case exists of
     True -> do
       -- logm $ "  getBucketSize(exists) " ++ (show (tableName,res))
       return $ TISize 0
     False -> do
-      -- logm $ "  getBucketSize(nonexist) "
+      logm $ "  getBucketSize(nonexist) "
       return $ TISize 0
+-}
 
 getStorageType :: TableName -> Process TableInfoRsp
 getStorageType tableName = do
@@ -485,22 +609,6 @@ queueExists tableName = do
 -- The following functions are courtesy of TCache by agocorona
 -- https://github.com/agocorona/TCache
 
-defaultReadByKey :: FilePath -> IO (Maybe B.ByteString)
-defaultReadByKey k = iox   -- !> "defaultReadByKey"
-     where
-     iox = handle handler $ do
-             s <-  readFileStrict  k
-             return $ Just   s                                                       -- `debug` ("read "++ filename)
-
-     handler ::  IOError ->  IO (Maybe B.ByteString)
-     handler  e
-      | isAlreadyInUseError e = defaultReadByKey  k
-      | isDoesNotExistError e = return Nothing
-      | otherwise= if ("invalid" `isInfixOf` ioeGetErrorString e)
-         then
-            error $  "readResource: " ++ show e ++ " defPath and/or keyResource are not suitable for a file path"
-
-         else defaultReadByKey  k
 
 -- ---------------------------------------------------------------------
 

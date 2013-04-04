@@ -4,6 +4,7 @@ module Data.HroqApp
   (
     start_app
   , create_queue_meta_table
+
   )
   where
 
@@ -133,14 +134,11 @@ create_queue_meta_table() ->
     end.
 -}
 
-hroq_queue_meta_table :: TableName
-hroq_queue_meta_table = TN "hroq_queue_meta_table"
-
 create_queue_meta_table :: Process ()
 create_queue_meta_table = do
   logm "create_queue_meta_table undefined"
   let tableName = hroq_queue_meta_table
-  res <- create_table DiscCopies tableName
+  res <- create_table DiscCopies tableName RecordTypeMeta
   logm $ "create_queue_meta_table:create_table res=" ++ (show res)
   return ()
 
@@ -153,7 +151,7 @@ create_consumer_local_storage_table :: Process ()
 create_consumer_local_storage_table = do
   logm "create_consumer_local_storage_table undefined"
   let tableName = hroq_consumer_local_storage_table
-  res <- create_table DiscCopies tableName
+  res <- create_table DiscCopies tableName RecordTypeConsumerLocal
   logm $ "create_consumer_local_storage_table:create_table res=" ++ (show res)
   return ()
 {-

@@ -31,7 +31,7 @@ import qualified Data.Set as Set
 import Data.Hroq
 import Data.HroqLogger
 import Data.HroqGroups
-import Data.HroqMnesia
+import qualified Data.HroqMnesia as HM
 import Data.HroqQueueMeta
 import Data.HroqStatsGatherer
 import Data.HroqUtil
@@ -177,7 +177,7 @@ initFunc (queueName,appInfo,doCleanup) = do
     -- process_flag(trap_exit, true),
 
     -- ok = mnesia:wait_for_tables([eroq_queue_meta_table], infinity),
-    wait_for_tables [eroq_queue_meta_table] Infinity
+    HM.wait_for_tables [hroq_queue_meta_table] Infinity
     logm $ "HroqQueue:initFunc 1"
 
     -- Run through the control table & delete all empty buckets ...
@@ -186,7 +186,7 @@ initFunc (queueName,appInfo,doCleanup) = do
     logm $ "HroqQueue:initFunc 2:(queueSize,buckets)=" ++ (show (queueSize,buckets))
 
     -- ok = mnesia:wait_for_tables(Buckets, infinity),
-    wait_for_tables buckets Infinity
+    HM.wait_for_tables buckets Infinity
     logm $ "HroqQueue:initFunc 3"
 
     -- [CurrProcBucket | _] = Buckets,
@@ -206,14 +206,14 @@ initFunc (queueName,appInfo,doCleanup) = do
 -}
     if currProcBucket == currOverflowBucket 
       then do
-        change_table_copy_type currProcBucket DiscCopies
+        HM.change_table_copy_type currProcBucket HM.DiscCopies
       else do
-        change_table_copy_type currProcBucket     DiscCopies
-        change_table_copy_type currOverflowBucket DiscCopies
+        HM.change_table_copy_type currProcBucket     HM.DiscCopies
+        HM.change_table_copy_type currOverflowBucket HM.DiscCopies
     logm $ "HroqQueue:initFunc 4"
 
 
-    allKeys <- dirty_all_keys currProcBucket
+    allKeys <- HM.dirty_all_keys currProcBucket
     logm $ "HroqQueue:initFunc 5"
 
 {-
@@ -290,15 +290,15 @@ check_buckets queueName = do
   logm $ " check_buckets:mab=" ++ (show mab)
   case mab of
     [b] -> do
-      TIStorageType storage <- table_info b TableInfoStorageType
+      HM.TIStorageType storage <- HM.table_info b HM.TableInfoStorageType
       case storage of
-        DiscCopies -> do
-            (TISize size) <- table_info b TableInfoSize
+        HM.DiscCopies -> do
+            (HM.TISize size) <- HM.table_info b HM.TableInfoSize
             return (size,[b])
-        DiscOnlyCopies -> do
-            (TISize size) <- table_info b TableInfoSize
+        HM.DiscOnlyCopies -> do
+            (HM.TISize size) <- HM.table_info b HM.TableInfoSize
             return (size,[b])
-        StorageNone -> do
+        HM.StorageNone -> do
             nb <- make_next_bucket queueName
             return (0,[nb])
     bs -> do
@@ -333,10 +333,10 @@ traverse_check_buckets(_, [], Size)-> Size.
 traverse_check_buckets :: QName -> [TableName] -> Integer -> Process Integer
 traverse_check_buckets _            [] size = return size
 traverse_check_buckets queueName (b:t) size = do
-  TISize s <- table_info b TableInfoSize
+  HM.TISize s <- HM.table_info b HM.TableInfoSize
   case s of
     0 -> do
-          delete_table b
+          HM.delete_table b
           meta_del_bucket queueName b
           return ()
     _ -> return ()
@@ -416,8 +416,8 @@ enqueue_one_message queueName v s = do
 
   -- logm $ "enqueue_one_message:(procBucket,overflowBucket)=" ++ (show (procBucket,overflowBucket))
 
-  TISize bucketSize <- table_info overflowBucket TableInfoSize
-  -- logm $ "enqueue_one_message:bucketSize=" ++ (show bucketSize)
+  HM.TISize bucketSize <- HM.table_info overflowBucket HM.TableInfoSize
+  logm $ "enqueue_one_message:bucketSize=" ++ (show bucketSize)
 
 {-
     EnqueueWorkBucket =
@@ -446,7 +446,7 @@ enqueue_one_message queueName v s = do
     ok = eroq_log_dumper:dirty(EnqueueWorkBucket),
 -}
   -- retry_dirty_write (10::Integer) enqueueWorkBucket msgRecord
-  dirty_write_q enqueueWorkBucket msgRecord
+  HM.dirty_write_q enqueueWorkBucket msgRecord
   let newTotalQueuedMsg = (qsTotalQueueSize s) + 1
       newEnqueueCount   = (qsEnqueueCount s)   + 1
   -- logm $ "enqueue_one_message:write done"
@@ -522,7 +522,7 @@ enqueue_one_message queueName v s = do
                         -- But only swap the previous overflow bucket
                         -- (previous tail) out of ram if it is not the
                         -- head of the queue ....
-                        change_table_copy_type overflowBucket DiscOnlyCopies
+                        HM.change_table_copy_type overflowBucket HM.DiscOnlyCopies
 
 
                  return $ s { qsCurrOverflowBucket = enqueueWorkBucket
@@ -566,8 +566,35 @@ make_next_bucket :: QName -> Process TableName
 make_next_bucket queueName = do
   newBucket <- build_next_bucket_name queueName
   meta_add_bucket queueName newBucket
-  create_table DiscCopies newBucket
+  create_table HM.DiscCopies newBucket
   return newBucket
 
+
+-- ---------------------------------------------------------------------
+{-
+%worker piggies
+create_table(Type, TableName) -> 
+    case mnesia:create_table(TableName, [{attributes, record_info(fields, eroq_message)}, {type, set}, {Type, [node()]}, {record_name, eroq_message}]) of
+    {atomic, ok} ->
+        ok;
+    {aborted,{already_exists,TableName}} ->
+        case mnesia:table_info(TableName, storage_type) of
+        Type ->
+            ok;
+        _ ->
+            retry_change_table_copy_type(TableName, Type, 10)
+        end;
+    Error ->
+        %io:format("DEBUG create_table error ~p~n", [Error]),
+        Error
+    end.
+
+
+-}
+
+create_table :: HM.TableStorage -> TableName -> Process ()
+create_table storage tableName = do
+  HM.create_table storage tableName HM.RecordTypeQueueEntry
+  logm "HroqQueue.create_table:not checking storage type"
 
 -- ---------------------------------------------------------------------
