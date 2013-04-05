@@ -545,8 +545,11 @@ decodeFileMeta' filename = do
   go [] s 0
   where
     go acc bs offset = do
-      (v,bs',offset') <- dm bs offset
-      go (acc++[v]) bs' offset'
+      if (L.null bs) 
+        then return acc
+        else do
+          (v,bs',offset') <- dm bs offset
+          go (acc++[v]) bs' offset'
 
     dm :: L.ByteString -> Int64 -> IO (Meta, L.ByteString, Int64)
     dm bs offset = do
