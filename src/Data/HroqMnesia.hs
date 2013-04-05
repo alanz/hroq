@@ -502,12 +502,8 @@ waitForTable s table = do
             case recordType of
               RecordTypeMeta       -> do
                 logm $ "waitForTable: RecordTypeMeta"
-                {-
-                ms <- liftIO $ decodeFileMeta (tableNameToFileName table)
-                logm $ "wait_for_tables:ms=" ++ (show ms)
-                getLengthOfFile ms
-                -}
-                ems <- liftIO $ Exception.try $ decodeFileMeta' (tableNameToFileName table)
+                -- TODO: refactor this and next case into one fn
+                ems <- liftIO $ Exception.try $ decodeFileMeta (tableNameToFileName table)
                 logm $ "wait_for_tables:ems=" ++ (show ems)
                 case ems of
                   Left (e :: IOError) -> return 0
@@ -515,9 +511,11 @@ waitForTable s table = do
 
               RecordTypeQueueEntry -> do
                 logm $ "waitForTable: RecordTypeQueueEntry"
-                qs <- liftIO $ decodeFileQEntry (tableNameToFileName table)
-                logm $ "wait_for_tables:qs=" ++ (show qs)
-                getLengthOfFile qs
+                ems <- liftIO $ Exception.try $ decodeFileMeta (tableNameToFileName table)
+                logm $ "wait_for_tables:ems=" ++ (show ems)
+                case ems of
+                  Left (e :: IOError) -> return 0
+                  Right ms -> return $ fromIntegral $ length ms
               _ -> do
                 logm "do_wait_for_tables:unknown record type"
                 return 0
@@ -532,14 +530,19 @@ waitForTable s table = do
 
 -- ---------------------------------------------------------------------
 
-decodeFileMeta :: FilePath -> IO (Either IOError [Meta])
-decodeFileMeta filename = Exception.try (decodeFile filename)
+decodeFileMeta :: FilePath -> IO [Meta]
+decodeFileMeta = decodeFileBinaryList
 
--- decodeFileMeta' :: FilePath -> IO (Either IOError [Meta])
--- decodeFileMeta' ::
---   Binary a => FilePath -> IO (a, L.ByteString, Int64)
-decodeFileMeta' :: FilePath -> IO [Meta]
-decodeFileMeta' filename = do
+
+-- decodeFileQEntry :: FilePath -> IO (Either IOError [QEntry])
+-- decodeFileQEntry filename = Exception.try (decodeFile filename)
+decodeFileQEntry :: FilePath -> IO [QEntry]
+decodeFileQEntry = decodeFileBinaryList
+
+-- ---------------------------------------------------------------------
+
+decodeFileBinaryList :: (Binary a) => FilePath -> IO [a]
+decodeFileBinaryList filename = do
   -- runGetState :: Get a -> ByteString -> Int64 -> (a, ByteString, Int64)
   s <- L.readFile filename
   go [] s 0
@@ -551,24 +554,13 @@ decodeFileMeta' filename = do
           (v,bs',offset') <- dm bs offset
           go (acc++[v]) bs' offset'
 
-    dm :: L.ByteString -> Int64 -> IO (Meta, L.ByteString, Int64)
+    dm :: (Binary a) => L.ByteString -> Int64 -> IO (a, L.ByteString, Int64)
     dm bs offset = do
       return $ runGetState (do v <- get
                                m <- isEmpty
                                m `seq` return v) bs offset
 
-
-{-
-decodeFile :: Binary a => FilePath -> IO a
-decodeFile f = do
-    s <- L.readFile f
-    return $ runGet (do v <- get
-                        m <- isEmpty
-                        m `seq` return v) s
--}
-
-decodeFileQEntry :: FilePath -> IO (Either IOError [QEntry])
-decodeFileQEntry filename = Exception.try (decodeFile filename)
+-- ---------------------------------------------------------------------
 
 getLengthOfFile ::
   (Exception e, Binary a) => (Either e [a]) -> Process Integer
