@@ -36,14 +36,17 @@ import Control.Distributed.Process.Platform.Time
 import Control.Exception as Exception
 import Control.Monad(when,replicateM,foldM,liftM3,liftM2,liftM)
 import Data.Binary
+import Data.Binary.Get
 import Data.DeriveTH
 import Data.Hroq
 import Data.HroqLogger
+import Data.Int
 import Data.IORef
 import Data.List(elemIndices,isInfixOf)
 import Data.Maybe(fromJust,fromMaybe)
 import Data.RefSerialize
 import Data.Typeable (Typeable)
+import Data.Word
 import Network.Transport.TCP (createTransportExposeInternals, defaultTCPParameters)
 import System.Directory
 import System.IO
@@ -51,6 +54,7 @@ import System.IO.Error
 import System.IO.Unsafe
 import qualified Data.ByteString.Lazy.Char8 as B
 import qualified Data.Map as Map
+import qualified Data.ByteString.Lazy as L
 
 -- ---------------------------------------------------------------------
 
@@ -490,27 +494,87 @@ waitForTable s table = do
       let (TableMeta _ms storage recordType) = fromMaybe (TableMeta Nothing StorageNone RecordTypeMeta) mm
       exists  <- queueExists table
       logm $ "wait_for_tables:(table,exists)=" ++ (show (table,exists))
-      case exists of
+      res <- case exists of
         True -> do
-          numRecords <-
+          -- let numRecords = 0
+          -- numRecords <- getNumRecords (tableNameToFileName table) recordType
+          numRecords <- do
             case recordType of
               RecordTypeMeta       -> do
-                ms <- liftIO ((decodeFile (tableNameToFileName table)) :: IO [Meta])
+                logm $ "waitForTable: RecordTypeMeta"
+                {-
+                ms <- liftIO $ decodeFileMeta (tableNameToFileName table)
                 logm $ "wait_for_tables:ms=" ++ (show ms)
-                return $ fromIntegral $length ms
+                getLengthOfFile ms
+                -}
+                ems <- liftIO $ Exception.try $ decodeFileMeta' (tableNameToFileName table)
+                logm $ "wait_for_tables:ems=" ++ (show ems)
+                case ems of
+                  Left (e :: IOError) -> return 0
+                  Right ms -> return $ fromIntegral $ length ms
+
               RecordTypeQueueEntry -> do
-                qs <- liftIO ((decodeFile (tableNameToFileName table)) :: IO [QEntry])
+                logm $ "waitForTable: RecordTypeQueueEntry"
+                qs <- liftIO $ decodeFileQEntry (tableNameToFileName table)
                 logm $ "wait_for_tables:qs=" ++ (show qs)
-                return $ fromIntegral $length qs
-              _ -> do logm "do_wait_for_tables:unknown record type"
-                      return 0
+                getLengthOfFile qs
+              _ -> do
+                logm "do_wait_for_tables:unknown record type"
+                return 0
+
           return (table,TableMeta (Just numRecords) storage recordType)
         False -> do
           logm $ "wait_for_tables:False, done:" ++ (show table)
           return (table,TableMeta Nothing StorageNone recordType)
-      -- logm $ "waitForTable done:res=" ++ (show res)
-      -- return res
+      logm $ "waitForTable done:res=" ++ (show res)
+      return res
       -- return (table, TableMeta Nothing StorageNone RecordTypeMeta)
+
+-- ---------------------------------------------------------------------
+
+decodeFileMeta :: FilePath -> IO (Either IOError [Meta])
+decodeFileMeta filename = Exception.try (decodeFile filename)
+
+-- decodeFileMeta' :: FilePath -> IO (Either IOError [Meta])
+-- decodeFileMeta' ::
+--   Binary a => FilePath -> IO (a, L.ByteString, Int64)
+decodeFileMeta' :: FilePath -> IO [Meta]
+decodeFileMeta' filename = do
+  -- runGetState :: Get a -> ByteString -> Int64 -> (a, ByteString, Int64)
+  s <- L.readFile filename
+  go [] s 0
+  where
+    go acc bs offset = do
+      (v,bs',offset') <- dm bs offset
+      go (acc++[v]) bs' offset'
+
+    dm :: L.ByteString -> Int64 -> IO (Meta, L.ByteString, Int64)
+    dm bs offset = do
+      return $ runGetState (do v <- get
+                               m <- isEmpty
+                               m `seq` return v) bs offset
+
+
+{-
+decodeFile :: Binary a => FilePath -> IO a
+decodeFile f = do
+    s <- L.readFile f
+    return $ runGet (do v <- get
+                        m <- isEmpty
+                        m `seq` return v) s
+-}
+
+decodeFileQEntry :: FilePath -> IO (Either IOError [QEntry])
+decodeFileQEntry filename = Exception.try (decodeFile filename)
+
+getLengthOfFile ::
+  (Exception e, Binary a) => (Either e [a]) -> Process Integer
+getLengthOfFile e = do
+  case e of
+    Left er -> do
+      logm $ "getLengthOfFile:(er)=" ++ (show (er))
+      return 0
+    Right xs -> return $ fromIntegral $ length xs
 
 -- ---------------------------------------------------------------------
 
@@ -604,6 +668,20 @@ queueExists tableName = do
     res <- liftIO $ doesFileExist $ tableNameToFileName tableName
     return res
 
+-- ---------------------------------------------------------------------
+
+decodeFileMaybe ::
+  (Exception e, Binary a) => FilePath -> IO (Either e [a])
+decodeFileMaybe filename = do
+  Exception.try (decodeFile filename)
+
+{-
+-- decodeFileMaybe :: (Binary a) => FilePath -> IO (Either String a)
+decodeFileMaybe filename = handle handler $ Right (decodeFile filename)
+  where
+   -- handler :: IOError -> IO (Either String a)
+   handler (e::IOError) = return $ Left ("decodeFileMaybe failed, got:" ++ (show e))
+-}
 -- =====================================================================
 -- ---------------------------------------------------------------------
 -- The following functions are courtesy of TCache by agocorona
