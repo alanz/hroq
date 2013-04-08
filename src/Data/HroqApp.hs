@@ -136,7 +136,6 @@ create_queue_meta_table() ->
 
 create_queue_meta_table :: Process ()
 create_queue_meta_table = do
-  logm "create_queue_meta_table undefined"
   let tableName = hroq_queue_meta_table
   res <- create_table DiscCopies tableName RecordTypeMeta
   logm $ "create_queue_meta_table:create_table res=" ++ (show res)

@@ -79,15 +79,18 @@ worker = do
   -- mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..8000]
   -- mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..2000]
   -- mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..800]
+
   mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..8]
   logm "enqueue done b"
 
   -- r <- enqueue_one_message (QN "tablea" ) (qval "bar") s
 
+  liftIO $ threadDelay (3*1000000) -- 3 seconds
+
   ms4 <- get_state
   logm $ "mnesia state ms4:" ++ (show ms4)
 
-  liftIO $ threadDelay (3*1000000) -- 3 seconds
+  liftIO $ threadDelay (1*1000000) -- 1 seconds
 
   logm $ "blurble"
 

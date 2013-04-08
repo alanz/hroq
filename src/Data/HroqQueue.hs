@@ -359,6 +359,7 @@ serverDefinition = defaultProcess {
          handleInfo (\dict (ProcessMonitorNotification _ _ r) -> do {logm $ show r; continue dict })
         ]
      , timeoutHandler = \_ _ -> stop $ TerminateOther "timeout az"
+     , terminateHandler = \_ reason -> do { logm $ "HroqQueue terminateHandler:" ++ (show reason) }
     } :: ProcessDefinition State
 
 -- Note: the handlers match on type signature
