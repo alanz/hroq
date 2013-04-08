@@ -10,6 +10,7 @@ module Data.HroqMnesia
   , dirty_write
   , dirty_write_q
   , dirty_read
+  , dirty_read_q
   , dirty_all_keys
   , wait_for_tables
 
@@ -93,7 +94,11 @@ data DirtyAllKeys = DirtyAllKeys !TableName
                     deriving (Typeable, Show)
 
 --  , dirty_read
-data DirtyRead = DirtyRead !TableName !Meta
+data DirtyRead = DirtyRead !TableName !MetaKey
+                   deriving (Typeable, Show)
+
+--  , dirty_read
+data DirtyReadQ = DirtyReadQ !TableName !QKey
                    deriving (Typeable, Show)
 
 --  , dirty_write
@@ -141,6 +146,10 @@ instance Binary DirtyAllKeys where
 instance Binary DirtyRead where
   put (DirtyRead tn key) = put tn >> put key
   get = liftM2 DirtyRead get get
+
+instance Binary DirtyReadQ where
+  put (DirtyReadQ tn key) = put tn >> put key
+  get = liftM2 DirtyReadQ get get
 
 instance Binary DirtyWrite where
   put (DirtyWrite tn key) = put tn >> put key
@@ -196,6 +205,7 @@ data TableMeta = TableMeta
 data State = MnesiaState
   {
   sTableInfo :: Map.Map TableName TableMeta
+  -- TODO: add ram cache per table
   } deriving (Show,Typeable)
 
 instance Binary TableMeta where
@@ -237,8 +247,11 @@ delete_table tableName = mycall (DeleteTable tableName)
 dirty_all_keys :: TableName -> Process [QKey]
 dirty_all_keys tableName = mycall (DirtyAllKeys tableName)
 
-dirty_read :: TableName -> Meta -> Process (Maybe Meta)
+dirty_read :: TableName -> MetaKey -> Process (Maybe Meta)
 dirty_read tableName key = mycall (DirtyRead tableName key)
+
+dirty_read_q :: TableName -> QKey -> Process (Maybe QEntry)
+dirty_read_q tableName key = mycall (DirtyReadQ tableName key)
 
 dirty_write :: TableName -> Meta -> Process ()
 dirty_write tableName val = mycall (DirtyWrite tableName val)
@@ -329,6 +342,7 @@ serverDefinition = defaultProcess {
         , handleCall handleDeleteTable
         , handleCall handleDirtyAllKeys
         , handleCall handleDirtyRead
+        , handleCall handleDirtyReadQ
         , handleCall handleDirtyWrite
         , handleCall handleDirtyWriteQ
         , handleCall handleTableInfo
@@ -372,6 +386,11 @@ handleDirtyAllKeys s (DirtyAllKeys tableName) = do
 handleDirtyRead :: State -> DirtyRead -> Process (ProcessReply State (Maybe Meta))
 handleDirtyRead s (DirtyRead tableName key) = do
     res <- do_dirty_read tableName key
+    reply res s
+
+handleDirtyReadQ :: State -> DirtyReadQ -> Process (ProcessReply State (Maybe QEntry))
+handleDirtyReadQ s (DirtyReadQ tableName key) = do
+    res <- do_dirty_read_q tableName key
     reply res s
 
 handleDirtyWrite :: State -> DirtyWrite -> Process (ProcessReply State ())
@@ -462,17 +481,32 @@ do_dirty_write_q s tableName record = do
 
 -- ---------------------------------------------------------------------
 
-do_dirty_read :: (Binary c)
-  => TableName -> b -> Process (Maybe c)
+do_dirty_read :: TableName -> MetaKey -> Process (Maybe Meta)
 do_dirty_read tableName keyVal = do
-  logm $ "dirty_read:" ++ (show (tableName)) -- ,keyVal))
+  logm $ "unimplemented dirty_read:" ++ (show (tableName)) -- ,keyVal))
+  ems <- liftIO $ Exception.try $ decodeFileMeta (tableNameToFileName tableName)
+  case ems of
+    Left (e::IOError) -> do
+      logm $ "do_dirty_read e " ++ (show keyVal) ++ ":" ++ (show e)
+      return Nothing
+    Right ms -> do
+      let ms' = filter (\(MAllBuckets key _ _) -> key == keyVal) ms
+      logm $ "do_dirty_read ms' " ++ (show keyVal) ++ ":" ++ (show ms')
+      if ms' == [] then return Nothing
+                   else return $ Just (head ms')
+
+-- ---------------------------------------------------------------------
+
+do_dirty_read_q :: TableName -> QKey -> Process (Maybe QEntry)
+do_dirty_read_q tableName keyVal = do
+  logm $ "unimplemented dirty_read_q:" ++ (show (tableName)) -- ,keyVal))
   return Nothing
 
 -- ---------------------------------------------------------------------
 
 do_dirty_all_keys :: TableName -> Process [QKey]
 do_dirty_all_keys tableName = do
-  logm $ "dirty_all_keys:" ++ (show tableName)
+  logm $ "unimplemented dirty_all_keys:" ++ (show tableName)
   return []
 
 -- ---------------------------------------------------------------------
@@ -489,6 +523,7 @@ do_wait_for_tables s tables _maxWait = do
   -- where
 waitForTable :: State -> TableName -> Process (TableName,TableMeta)
 waitForTable s table = do
+      -- TODO: load the table info into the meta zone
       logm $ "waitForTable:" ++ (show table)
       let mm = getMetaForTable s table
       logm $ "waitForTable:me=" ++ (show mm)
@@ -549,7 +584,7 @@ decodeFileBinaryList filename = do
   go [] s 0
   where
     go acc bs offset = do
-      if (L.null bs) 
+      if (L.null bs)
         then return acc
         else do
           (v,bs',offset') <- dm bs offset

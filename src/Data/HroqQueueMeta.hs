@@ -65,7 +65,7 @@ add_bucket(QName, BucketId) ->
 meta_add_bucket :: QName -> TableName -> Process [TableName]
 meta_add_bucket queueName bucket = do
   logm $ "meta_add_bucket:" ++ (show (queueName,bucket))
-  rv <- retry_dirty_read retryCnt hroq_queue_meta_table (MAllBuckets queueName [] nullTimeStamp)
+  rv <- retry_dirty_read retryCnt hroq_queue_meta_table queueName
   case rv of
     Nothing -> do
        timestamp <- getTimeStamp
@@ -96,7 +96,7 @@ all_buckets(QName) ->
 meta_all_buckets :: QName -> Process [TableName]
 meta_all_buckets queueName = do
   logm $ "meta_all_buckets :" ++ (show queueName)
-  v <- dirty_read hroq_queue_meta_table (MAllBuckets queueName [] nullTimeStamp)
+  v <- dirty_read hroq_queue_meta_table queueName
   logm $ "meta_all_buckets v:" ++ (show v)
   case v of
     Nothing -> return []

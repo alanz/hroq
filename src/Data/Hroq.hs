@@ -6,6 +6,7 @@ module Data.Hroq
   , QValue(..)
   , QEntry(..)
   , QName(..)
+  , MetaKey(..)
   , Meta(..)
   , TableName(..)
   , TimeStamp
@@ -46,7 +47,7 @@ maxBucketSizeConst = 5
 -- ---------------------------------------------------------------------
 
 data QName = QN !String
-             deriving (Typeable,Show,Read)
+             deriving (Typeable,Show,Read,Eq)
 
 instance Binary QName where
   put (QN s) = put s
@@ -85,8 +86,10 @@ instance Serialize QEntry where
 
 -- ---------------------------------------------------------------------
 
-data Meta = MAllBuckets !QName ![TableName] !TimeStamp
-            deriving (Show,Read,Typeable)
+type MetaKey = QName
+
+data Meta = MAllBuckets !MetaKey ![TableName] !TimeStamp
+            deriving (Show,Read,Typeable,Eq)
 
 instance Binary Meta where
   put (MAllBuckets q tns ts) = put q >> put tns >> put ts
@@ -118,7 +121,7 @@ data OverflowBucket = OB !QName
 
 
 data TimeStamp = TS !String
-                 deriving (Show,Read)
+                 deriving (Show,Read,Eq)
 
 instance Binary TimeStamp where
   put (TS s) = put s

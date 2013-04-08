@@ -290,6 +290,7 @@ check_buckets queueName = do
   logm $ " check_buckets:mab=" ++ (show mab)
   case mab of
     [b] -> do
+      logm $ "check_buckets: one only:" ++ (show b)
       HM.TIStorageType storage <- HM.table_info b HM.TableInfoStorageType
       case storage of
         HM.DiscCopies -> do
@@ -302,8 +303,11 @@ check_buckets queueName = do
             nb <- make_next_bucket queueName
             return (0,[nb])
     bs -> do
+      logm $ "check_buckets: multi(or none):" ++ (show bs)
       size <- traverse_check_buckets queueName bs 0
+      -- Must re-read, traverse_check_buckets may delete empty ones
       mab' <- meta_all_buckets queueName
+      logm $ " check_buckets:mab'=" ++ (show mab')
       case mab' of
         [] -> do
           b <- make_next_bucket queueName

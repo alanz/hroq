@@ -97,7 +97,7 @@ retry_dirty_read n tableName key = do
       retry_dirty_read (n - 1) tableName key
 -}
 retry_dirty_read ::
-  Integer -> TableName -> Meta -> Process (Maybe Meta)
+  Integer -> TableName -> MetaKey -> Process (Maybe Meta)
 retry_dirty_read n tableName key = do
   -- logm $ "retry_dirty_read:" ++ (show (n,tableName,key))
   dirty_read tableName key

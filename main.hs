@@ -80,8 +80,8 @@ worker = do
   -- mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..2000]
   -- mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..800]
 
-  mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..8]
-  logm "enqueue done b"
+  -- mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..8]
+  -- logm "enqueue done b"
 
   -- r <- enqueue_one_message (QN "tablea" ) (qval "bar") s
 
