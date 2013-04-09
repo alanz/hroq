@@ -203,9 +203,9 @@ data TableMeta = TableMeta
   } deriving (Show,Typeable)
 
 data State = MnesiaState
-  {
-  sTableInfo :: Map.Map TableName TableMeta
-  -- TODO: add ram cache per table
+  { sTableInfo :: Map.Map TableName TableMeta
+  , sRamQ      :: Map.Map TableName [QEntry]
+  , sRamMeta   :: Map.Map TableName [Meta]
   } deriving (Show,Typeable)
 
 instance Binary TableMeta where
@@ -213,15 +213,39 @@ instance Binary TableMeta where
   get = liftM3 TableMeta get get get
 
 instance Binary State where
-  put (MnesiaState ti) = put ti
-  get = liftM MnesiaState get
+  put (MnesiaState ti rq rm) = put ti >> put rq >> put rm
+  get = liftM3 MnesiaState get get get
 
 getMetaForTable :: State -> TableName -> Maybe (TableMeta)
 getMetaForTable s tableName = Map.lookup tableName (sTableInfo s)
 
+getMetaForTableDefault :: State -> TableName -> TableMeta
 getMetaForTableDefault s tableName =
   fromMaybe (TableMeta Nothing StorageNone RecordTypeQueueEntry)
            $ getMetaForTable s tableName
+
+updateTableInfoMeta :: State -> TableName -> TableStorage -> [Meta] -> State
+updateTableInfoMeta s tableName _storage vals = s'
+  where
+    m@(TableMeta _ storage _) = getMetaForTableDefault s tableName
+    cnt = fromIntegral $ length vals
+    ti' = Map.insert tableName (m { tSize = Just cnt }) (sTableInfo s)
+    rm' = case storage of
+            DiscOnlyCopies -> (sRamMeta s)
+            _ ->  Map.insert tableName vals (sRamMeta s)
+    s' = s { sTableInfo = ti', sRamMeta = rm' }
+
+updateTableInfoQ :: State -> TableName -> TableStorage -> [QEntry] -> State
+updateTableInfoQ s tableName _storage vals = s'
+  where
+    m@(TableMeta _ storage _) = getMetaForTableDefault s tableName
+    cnt = fromIntegral $ length vals
+    ti' = Map.insert tableName (m { tSize = Just cnt }) (sTableInfo s)
+    rq' = case storage of
+            DiscOnlyCopies -> (sRamQ s)
+            _ ->  Map.insert tableName vals (sRamQ s)
+    s' = s { sTableInfo = ti', sRamQ = rq' }
+
 
 -- ---------------------------------------------------------------------
 {-
@@ -279,7 +303,7 @@ startHroqMnesia initParams = do
 -- init callback
 initFunc :: InitHandler a State
 initFunc _ = do
-  return $ InitOk (MnesiaState Map.empty) Infinity
+  return $ InitOk (MnesiaState Map.empty Map.empty Map.empty) Infinity
 
 getSid :: Process ProcessId
 getSid = do
@@ -514,14 +538,14 @@ do_dirty_all_keys tableName = do
 do_wait_for_tables :: State -> [TableName] -> Delay -> Process State
 do_wait_for_tables s tables _maxWait = do
   logm $ "wait_for_tables"
-  r <- mapM (waitForTable s ) tables
+  s' <- foldM waitForTable s tables
   -- r <- waitForTable s (head tables)
-  logm $ "do_wait_for_tables:r=" ++ (show r)
+  logm $ "do_wait_for_tables:done"
   -- logm $ "do_wait_for_tables:blah"
-  return s
+  return s'
 
   -- where
-waitForTable :: State -> TableName -> Process (TableName,TableMeta)
+waitForTable :: State -> TableName -> Process State
 waitForTable s table = do
       -- TODO: load the table info into the meta zone
       logm $ "waitForTable:" ++ (show table)
@@ -532,9 +556,7 @@ waitForTable s table = do
       logm $ "wait_for_tables:(table,exists)=" ++ (show (table,exists))
       res <- case exists of
         True -> do
-          -- let numRecords = 0
-          -- numRecords <- getNumRecords (tableNameToFileName table) recordType
-          numRecords <- do
+          newS <- do
             case recordType of
               RecordTypeMeta       -> do
                 logm $ "waitForTable: RecordTypeMeta"
@@ -542,24 +564,30 @@ waitForTable s table = do
                 ems <- liftIO $ Exception.try $ decodeFileMeta (tableNameToFileName table)
                 logm $ "wait_for_tables:ems=" ++ (show ems)
                 case ems of
-                  Left (e :: IOError) -> return 0
-                  Right ms -> return $ fromIntegral $ length ms
+                  Left (e :: IOError) -> return s
+                  -- Right ms -> return $ fromIntegral $ length ms
+                  Right ms -> return $ updateTableInfoMeta s table storage ms
 
               RecordTypeQueueEntry -> do
                 logm $ "waitForTable: RecordTypeQueueEntry"
-                ems <- liftIO $ Exception.try $ decodeFileMeta (tableNameToFileName table)
+                ems <- liftIO $ Exception.try $ decodeFileQEntry (tableNameToFileName table)
                 logm $ "wait_for_tables:ems=" ++ (show ems)
                 case ems of
-                  Left (e :: IOError) -> return 0
-                  Right ms -> return $ fromIntegral $ length ms
+                  Left (e :: IOError) -> return s
+                  -- Right ms -> return $ fromIntegral $ length ms
+                  Right ms -> return $ updateTableInfoQ s table storage ms
               _ -> do
                 logm "do_wait_for_tables:unknown record type"
-                return 0
+                return s
 
-          return (table,TableMeta (Just numRecords) storage recordType)
+          return newS
         False -> do
           logm $ "wait_for_tables:False, done:" ++ (show table)
-          return (table,TableMeta Nothing StorageNone recordType)
+          -- return (table,TableMeta Nothing StorageNone recordType)
+          case recordType of
+            RecordTypeMeta       -> return $ updateTableInfoMeta s table StorageNone []
+            RecordTypeQueueEntry -> return $ updateTableInfoQ    s table StorageNone []
+            _                    -> return s
       logm $ "waitForTable done:res=" ++ (show res)
       return res
       -- return (table, TableMeta Nothing StorageNone RecordTypeMeta)
