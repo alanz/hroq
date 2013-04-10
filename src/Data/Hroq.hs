@@ -43,6 +43,7 @@ import qualified Data.Map as Map
 -- maxBucketSize = 5000
 maxBucketSizeConst = 5
 -- maxBucketSizeConst = 50
+-- maxBucketSizeConst = 500
 
 -- ---------------------------------------------------------------------
 

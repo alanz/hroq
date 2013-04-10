@@ -383,8 +383,9 @@ initFunc _ = do
   ems <- liftIO $ Exception.try $ decodeFileSchema (tableNameToFileName schemaTable)
   logm $ "initFunc:ems=" ++ (show ems)
   let m = case ems of
-            Left (e :: IOError) -> Map.empty
+            Left (e :: SomeException) -> Map.empty
             Right [ms] -> ms
+            Right _    -> Map.empty -- junk read
 
   -- Set all size fields to Nothing, to prompt explicit check when
   -- doing wait_for_tables
@@ -412,20 +413,23 @@ mycall op = do
 
 data TableStorage = DiscOnlyCopies
                   | DiscCopies
+                  | RamCopies
                   | StorageNone
                   deriving (Show,Ord,Eq)
 
 instance Binary TableStorage where
-  put DiscOnlyCopies = put (1::Word8)
-  put DiscCopies     = put (2::Word8)
-  put StorageNone    = put (3::Word8)
+  put DiscOnlyCopies = put 'O'
+  put DiscCopies     = put 'D'
+  put RamCopies      = put 'R'
+  put StorageNone    = put 'N'
 
   get = do
     v <- get
     case v of
-      (1::Word8) -> return DiscOnlyCopies
-      (2::Word8) -> return DiscCopies
-      (3::Word8) -> return StorageNone
+      'O' -> return DiscOnlyCopies
+      'D' -> return DiscCopies
+      'R' -> return RamCopies
+      'N' -> return StorageNone
 
 -- ---------------------------------------------------------------------
 
@@ -484,8 +488,8 @@ serverDefinition = defaultProcess {
 
 handleChangeTableCopyType :: State -> ChangeTableCopyType -> Process (ProcessReply State ())
 handleChangeTableCopyType s (ChangeTableCopyType tableName storage) = do
-    do_change_table_copy_type tableName storage
-    reply () s
+    s' <- do_change_table_copy_type s tableName storage
+    reply () s'
 
 handleCreateTable :: State -> CreateTable -> Process (ProcessReply State ())
 handleCreateTable s (CreateTable storage tableName recordType) = do
@@ -555,15 +559,33 @@ data Storable a = Store SKey a
                  deriving (Show,Read,Typeable)
 -}
 
-do_change_table_copy_type :: TableName -> TableStorage -> Process ()
-do_change_table_copy_type bucket DiscOnlyCopies = do
-  logm $ "change_table_copy_type to DiscOnlyCopies (undefined) for:" ++ (show (bucket))
+do_change_table_copy_type :: State -> TableName -> TableStorage -> Process State
+do_change_table_copy_type s bucket DiscOnlyCopies = do
+  logm $ "change_table_copy_type to DiscOnlyCopies for:" ++ (show (bucket))
+  let (TableMeta _ st rt) = getMetaForTableDefault s bucket
+  let s' = case rt of
+            RecordTypeMeta -> s {sRamMeta = Map.delete bucket (sRamMeta s)}
+            RecordTypeQueueEntry -> s {sRamQ = Map.delete bucket (sRamQ s)}
 
-do_change_table_copy_type bucket storageType = do
+  let (TableMeta size _ rt) = getMetaForTableDefault s' bucket
+  let s'' = s' { sTableInfo = Map.insert bucket (TableMeta size DiscOnlyCopies rt) (sTableInfo s'')}
+  persistTableInfo (sTableInfo s'')
+  return s''
+
+do_change_table_copy_type s bucket storageType = do
   logm $ "change_table_copy_type undefined for:" ++ (show (bucket,storageType))
+  return s
 
 mySyncCheck :: Integer -> Integer -> Integer -> Bool
 mySyncCheck _ _ _ = True
+
+-- ---------------------------------------------------------------------
+
+persistTableInfo :: Map.Map TableName TableMeta -> Process ()
+persistTableInfo ti = do
+  logm $ "persistTableInfo starting for:" ++ (show ti)
+  liftIO $ defaultWrite (tableNameToFileName schemaTable) (encode ti)
+  logm $ "persistTableInfo done"
 
 -- ---------------------------------------------------------------------
 
@@ -578,7 +600,7 @@ do_create_table s storage name recordType = do
 
   -- TODO: use an incremental write, rather than full dump
   -- TODO: check result?
-  liftIO $ defaultWrite (tableNameToFileName schemaTable) (encode ti')
+  persistTableInfo ti'
   return $ s { sTableInfo = ti' }
 
 -- ---------------------------------------------------------------------
@@ -628,7 +650,7 @@ do_dirty_write_q s tableName record = do
 
 do_dirty_read :: TableName -> MetaKey -> Process (Maybe Meta)
 do_dirty_read tableName keyVal = do
-  logm $ "unimplemented dirty_read:" ++ (show (tableName)) -- ,keyVal))
+  logm $ "dirty_read:" ++ (show (tableName)) -- ,keyVal))
   ems <- liftIO $ Exception.try $ decodeFileMeta (tableNameToFileName tableName)
   case ems of
     Left (e::IOError) -> do
@@ -805,11 +827,11 @@ getBucketSize :: State -> TableName -> Process (State,TableInfoRsp)
 getBucketSize s tableName = do
   logm $ "getBucketSize " ++ (show tableName)
   let mm = getMetaForTable s tableName
-  logm $ "getBucketSize:mm=" ++ (show mm)
+  -- logm $ "getBucketSize:mm=" ++ (show mm)
   s' <- if (isNothing mm) then waitForTable s tableName
                           else return s
   let mm' = getMetaForTable s' tableName
-  logm $ "getBucketSize:mm'=" ++ (show mm')
+  -- logm $ "getBucketSize:mm'=" ++ (show mm')
   case mm' of
     Nothing -> do
       logm $ "  getBucketSize(nonexist) "
