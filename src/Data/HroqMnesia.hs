@@ -386,7 +386,10 @@ initFunc _ = do
             Left (e :: IOError) -> Map.empty
             Right [ms] -> ms
 
-  let s' = s {sTableInfo = m}
+  -- Set all size fields to Nothing, to prompt explicit check when
+  -- doing wait_for_tables
+  let m' = Map.map (\(TableMeta _ st rt) -> (TableMeta Nothing st rt)) m
+  let s' = s {sTableInfo = m'}
 
   return $ InitOk s' Infinity
 
@@ -655,9 +658,9 @@ do_dirty_all_keys tableName = do
 
 do_wait_for_tables :: State -> [TableName] -> Delay -> Process State
 do_wait_for_tables s tables _maxWait = do
-  logm $ "wait_for_tables"
+  logm $ "wait_for_tables:sTableInfo=" ++ (show (sTableInfo s))
   s' <- foldM waitForTable s tables
-  logm $ "do_wait_for_tables:done"
+  logm $ "do_wait_for_tables:done: sTableInfo'=" ++ (show (sTableInfo s'))
   return s'
 
 
@@ -802,16 +805,24 @@ getBucketSize :: State -> TableName -> Process (State,TableInfoRsp)
 getBucketSize s tableName = do
   logm $ "getBucketSize " ++ (show tableName)
   let mm = getMetaForTable s tableName
+  logm $ "getBucketSize:mm=" ++ (show mm)
   s' <- if (isNothing mm) then waitForTable s tableName
                           else return s
   let mm' = getMetaForTable s' tableName
+  logm $ "getBucketSize:mm'=" ++ (show mm')
   case mm' of
     Nothing -> do
       logm $ "  getBucketSize(nonexist) "
       return $ (s',TISize 0)
     Just (TableMeta msize _ _) -> do
       logm $ "  getBucketSize(exists) " ++ (show (tableName,msize))
-      return $ (s',TISize $ fromMaybe 0 msize)
+      case msize of
+        Nothing -> do
+          s'' <- waitForTable s' tableName
+          let mm'' = getMetaForTableDefault s'' tableName
+          logm $ "getBucketSize:mm''=" ++ (show mm'')
+          return (s'', TISize $ fromMaybe 0 (tSize mm''))
+        Just size -> return (s',TISize size)
 {-
   exists <- queueExists tableName
   logm $ "getBucketSize exists=" ++ (show exists)
