@@ -148,7 +148,7 @@ hroq_consumer_local_storage_table = TN "hroq_consumer_local_storage_table"
 
 create_consumer_local_storage_table :: Process ()
 create_consumer_local_storage_table = do
-  logm "create_consumer_local_storage_table undefined"
+  logm "create_consumer_local_storage_table"
   let tableName = hroq_consumer_local_storage_table
   res <- create_table DiscCopies tableName RecordTypeConsumerLocal
   logm $ "create_consumer_local_storage_table:create_table res=" ++ (show res)

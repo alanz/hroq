@@ -102,7 +102,7 @@ worker = do
 startLocalNode :: IO LocalNode
 startLocalNode = do
     -- [role, host, port] <- getArgs
-  let [role, host, port] = ["foo","127.0.0.1", "10513"]
+  let [role, host, port] = ["foo","127.0.0.1", "10516"]
   -- Right transport <- createTransport host port defaultTCPParameters
   Right (transport,_internals) <- createTransportExposeInternals host port defaultTCPParameters
   node <- newLocalNode transport initRemoteTable
