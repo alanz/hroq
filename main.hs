@@ -111,8 +111,8 @@ worker_mnesia = do
   mnesiaSid <- startHroqMnesia ()
   logm "mnesia started"
 
-  ms1 <- get_state
-  logm $ "mnesia state ms1:" ++ (show ms1)
+  -- ms1 <- get_state
+  -- logm $ "mnesia state ms1:" ++ (show ms1)
 
   let table = TN "mnesiattest"
 
@@ -120,13 +120,18 @@ worker_mnesia = do
 
   wait_for_tables [table] Infinity
 
-  ms2 <- get_state
-  logm $ "mnesia state ms2:" ++ (show ms2)
+  -- ms2 <- get_state
+  -- logm $ "mnesia state ms2:" ++ (show ms2)
 
-  mapM_ (\n -> dirty_write_q table (QE (QK "a") (qval $ "bar" ++ (show n)))) [1..800]
+  let qe = QE (QK "a") (qval $ "bar2")
+  let s =   (MnesiaState Map.empty Map.empty Map.empty)
+  -- mapM_ (\n -> dirty_write_q table (QE (QK "a") (qval $ "bar" ++ (show n)))) [1..800]
+  -- mapM_ (\n -> dirty_write_q table qe) [1..800]
+  mapM_ (\n -> do_dirty_write_q s table qe) [1..800]
 
-  ms4 <- get_state
-  logm $ "mnesia state ms4:" ++ (show ms4)
+
+  -- ms4 <- get_state
+  -- logm $ "mnesia state ms4:" ++ (show ms4)
 
   liftIO $ threadDelay (1*1000000) -- 1 seconds
 

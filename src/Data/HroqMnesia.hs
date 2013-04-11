@@ -31,6 +31,9 @@ module Data.HroqMnesia
   -- * debug
   , queueExists
   , get_state
+
+  , State (..)
+  , do_dirty_write_q
   )
   where
 
@@ -528,6 +531,7 @@ handleDirtyWriteQ :: State -> DirtyWriteQ -> Process (ProcessReply State ())
 handleDirtyWriteQ s (DirtyWriteQ tableName val) = do
     s' <- do_dirty_write_q s tableName val
     reply () s'
+
 
 handleTableInfo :: State -> TableInfo -> Process (ProcessReply State TableInfoRsp)
 handleTableInfo s (TableInfo tableName req) = do
