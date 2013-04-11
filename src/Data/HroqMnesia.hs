@@ -563,12 +563,16 @@ do_change_table_copy_type :: State -> TableName -> TableStorage -> Process State
 do_change_table_copy_type s bucket DiscOnlyCopies = do
   logm $ "change_table_copy_type to DiscOnlyCopies for:" ++ (show (bucket))
   let (TableMeta _ st rt) = getMetaForTableDefault s bucket
+  logm $ "change_table_copy_type:(st,rt)=" ++ (show (st,rt))
   let s' = case rt of
-            RecordTypeMeta -> s {sRamMeta = Map.delete bucket (sRamMeta s)}
-            RecordTypeQueueEntry -> s {sRamQ = Map.delete bucket (sRamQ s)}
+            RecordTypeMeta       -> s {sRamMeta = Map.delete bucket (sRamMeta s)}
+            RecordTypeQueueEntry -> s {sRamQ    = Map.delete bucket (sRamQ s)}
+            _                    -> s
+  -- logm $ "change_table_copy_type:s'=" ++ (show s')
 
   let (TableMeta size _ rt) = getMetaForTableDefault s' bucket
-  let s'' = s' { sTableInfo = Map.insert bucket (TableMeta size DiscOnlyCopies rt) (sTableInfo s'')}
+  let s'' = s' { sTableInfo = Map.insert bucket (TableMeta size DiscOnlyCopies rt) (sTableInfo s')}
+  -- logm $ "change_table_copy_type:s''=" ++ (show (s''))
   persistTableInfo (sTableInfo s'')
   return s''
 
@@ -584,8 +588,13 @@ mySyncCheck _ _ _ = True
 persistTableInfo :: Map.Map TableName TableMeta -> Process ()
 persistTableInfo ti = do
   logm $ "persistTableInfo starting for:" ++ (show ti)
-  liftIO $ defaultWrite (tableNameToFileName schemaTable) (encode ti)
-  logm $ "persistTableInfo done"
+  -- liftIO $ threadDelay (1*1000000) -- 1 seconds
+  res <- liftIO $ Exception.try $ defaultWrite (tableNameToFileName schemaTable) (encode ti)
+  -- liftIO $ threadDelay (1*1000000) -- 1 seconds
+  case res of
+    Left (e :: SomeException) -> logm $ "persistTableInfo:error:" ++ (show e)
+    Right _ -> logm $ "persistTableInfo done"
+  -- liftIO $ threadDelay (1*1000000) -- 1 seconds
 
 -- ---------------------------------------------------------------------
 

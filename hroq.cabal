@@ -23,8 +23,6 @@ library
     -- -fhpc
   build-depends:       base ==4.5.*
                      , RefSerialize
-                     -- , TCache
-                     -- , Workflow
                      , binary
                      , bytestring
                      , containers

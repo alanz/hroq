@@ -71,6 +71,8 @@ worker = do
   ms3 <- get_state
   logm $ "mnesia state ms3:" ++ (show ms3)
 
+  liftIO $ threadDelay (10*1000000) -- 10 seconds
+
   logm "worker started all"
 
   -- enqueue qSida qNameA (qval "foo1")
@@ -81,7 +83,8 @@ worker = do
   -- mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..2000]
   -- mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..800]
 
-  mapM_ (\n -> enqueue qSidb qNameB (qval $ "foo" ++ (show n))) [1..11]
+  mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..51]
+  -- mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..11]
   logm "enqueue done b"
 
   -- mapM_ (\n -> enqueue qSida qNameA (qval $ "aaa" ++ (show n))) [1..8]
