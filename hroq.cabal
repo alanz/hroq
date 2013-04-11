@@ -13,27 +13,28 @@ category:            Database
 build-type:          Simple
 cabal-version:       >=1.8
 
-library
-  exposed-modules:    Data.Hroq 
-  -- other-modules:       
-  hs-source-dirs: . ./src
-  ghc-options:
-    -threaded
-    -with-rtsopts=-T
-    -- -fhpc
-  build-depends:       base ==4.5.*
-                     , RefSerialize
-                     , binary
-                     , bytestring
-                     , containers
-                     , network-transport-tcp
-                     , derive
-                     , distributed-process-platform
-                     , distributed-process
-                     , time
-                     , hslogger
-                     , old-locale
-                     , ekg
+
+-- library
+--   exposed-modules:    Data.Hroq 
+--   -- other-modules:       
+--   hs-source-dirs: . ./src
+--   ghc-options:
+--     -threaded
+--     -with-rtsopts=-T
+--     -- -fhpc
+--   build-depends:       base ==4.5.*
+--                      , RefSerialize
+--                      , binary
+--                      , bytestring
+--                      , containers
+--                      , network-transport-tcp
+--                      , derive
+--                      , distributed-process-platform
+--                      , distributed-process
+--                      , time
+--                      , hslogger
+--                      , old-locale
+--                      , ekg
 
 executable hroq
   main-is:             main.hs
@@ -42,6 +43,7 @@ executable hroq
     -- The -threaded and -with-rtsopts=-T are needed for EKG
     -threaded
     -with-rtsopts=-T
+    -- -rtsopts=all
     -- -prof -auto
     -- -fhpc
   -- other-modules:       
@@ -67,9 +69,6 @@ executable hroq
                        , hslogger
                        , old-locale
 
-
---  ghc-options:
---    -threaded
 
 source-repository head
     type: git

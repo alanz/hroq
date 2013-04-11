@@ -1,4 +1,6 @@
 {-# LANGUAGE DeriveDataTypeable  #-}
+{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE TypeSynonymInstances #-}
 
 module Data.Hroq
   (
@@ -28,6 +30,7 @@ import Control.Distributed.Process.Platform
 import Control.Distributed.Process.Platform.Async
 import Control.Distributed.Process.Platform.ManagedProcess hiding (runProcess)
 import Control.Distributed.Process.Platform.Time
+import Control.Monad(when,replicateM,foldM,liftM3,liftM2,liftM)
 import Data.Binary
 import Data.HroqLogger
 import Data.Maybe
@@ -41,8 +44,8 @@ import qualified Data.Map as Map
 
 -- -define(MAX_BUCKET_SIZE,  eroq_util:app_param(max_bucket_size, 5000)).
 -- maxBucketSize = 5000
-maxBucketSizeConst = 5
--- maxBucketSizeConst = 50
+-- maxBucketSizeConst = 5
+maxBucketSizeConst = 50
 -- maxBucketSizeConst = 500
 
 -- ---------------------------------------------------------------------
@@ -69,10 +72,16 @@ instance Binary QKey where
 
 -- ---------------------------------------------------------------------
 
-type QValue = Map.Map String String
+data QValue = QV !(Map.Map String String)
+              deriving (Typeable,Read,Show)
 data QEntry = QE !QKey    -- ^Id
                  !QValue  -- ^payload
               deriving (Typeable,Read,Show)
+
+instance Binary QValue where
+  put (QV v) = put v
+  get = liftM QV get
+
 
 instance Binary QEntry where
   put (QE k v) = put k >> put v

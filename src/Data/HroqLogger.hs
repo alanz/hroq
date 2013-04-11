@@ -66,6 +66,6 @@ logm string = do
   now <- liftIO getCurrentTime
   us  <- getSelfPid
   nsend registeredLoggerName (formatTime defaultTimeLocale "%c" now, us, string)
-
+  return ()
 
 

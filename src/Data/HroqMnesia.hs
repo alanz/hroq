@@ -206,8 +206,8 @@ instance Binary GetState where
 -- ---------------------------------------------------------------------
 
 data HroqMnesiaResult = HMResOk
-                      | HMResTimeout [TableName]
-                      | HMResError String
+                      | HMResTimeout ![TableName]
+                      | HMResError !String
                       deriving (Typeable,Show)
 
 instance Binary HroqMnesiaResult where
@@ -226,15 +226,15 @@ instance Binary HroqMnesiaResult where
 -- State related functions
 
 data TableMeta = TableMeta
-  { tSize       :: Maybe Integer -- ^Size of stored table, if known
-  , tStorage    :: TableStorage
-  , tRecordType :: RecordType
+  { tSize       :: !(Maybe Integer) -- ^Size of stored table, if known
+  , tStorage    :: !TableStorage
+  , tRecordType :: !RecordType
   } deriving (Show,Typeable)
 
 data State = MnesiaState
-  { sTableInfo :: Map.Map TableName TableMeta
-  , sRamQ      :: Map.Map TableName [QEntry]
-  , sRamMeta   :: Map.Map TableName [Meta]
+  { sTableInfo :: !(Map.Map TableName TableMeta)
+  , sRamQ      :: !(Map.Map TableName [QEntry])
+  , sRamMeta   :: !(Map.Map TableName [Meta])
   } deriving (Show,Typeable)
 
 instance Binary TableMeta where
@@ -280,7 +280,7 @@ insertEntryMeta s tableName val = s'
     rm' = case storage of
             DiscOnlyCopies -> (sRamMeta s)
             -- _ ->  Map.insert tableName (((sRamMeta s) Map.! tableName) ++ [val]) (sRamMeta s)
-            _ ->  if Map.member tableName (sRamMeta s) 
+            _ ->  if Map.member tableName (sRamMeta s)
                    -- then Map.insert tableName (((sRamMeta s) Map.! tableName) ++ [val]) (sRamMeta s)
                    then Map.insert tableName (                                  [val]) (sRamMeta s)
                    else Map.insert tableName (                                  [val]) (sRamMeta s)
@@ -297,7 +297,8 @@ updateTableInfoQ s tableName _storage vals = s'
     rq' = case storage of
             DiscOnlyCopies -> (sRamQ s)
             _ ->  Map.insert tableName vals (sRamQ s)
-    s' = s { sTableInfo = ti', sRamQ = rq' }
+    -- s' = s { sTableInfo = ti', sRamQ = rq' }
+    s' = s { sTableInfo = ti', sRamQ = strictify rq' }
 
 insertEntryQ :: State -> TableName -> QEntry -> State
 insertEntryQ s tableName val = s'
@@ -310,20 +311,12 @@ insertEntryQ s tableName val = s'
     -- Add the written record to the cache, if not DiscOnlyCopies
     rq' = case storage of
             DiscOnlyCopies -> (sRamQ s)
-            _ ->  if Map.member tableName (sRamQ s) 
+            _ ->  if Map.member tableName (sRamQ s)
                    then Map.insert tableName (((sRamQ s) Map.! tableName) ++ [val]) (sRamQ s)
                    else Map.insert tableName (                               [val]) (sRamQ s)
+    -- s' = s {sTableInfo = ti', sRamQ = rq'}
+    s' = s {sTableInfo = ti', sRamQ = strictify rq'}
 
-    s' = s {sTableInfo = ti', sRamQ = rq'}
-
-
--- ---------------------------------------------------------------------
-{-
--- may need this, to store the meta information permanently
-data MnesiaSchema = Schema
-  { sTables = Map.Map TableName
-  }
--}
 
 --------------------------------------------------------------------------------
 -- API                                                                        --
@@ -503,12 +496,12 @@ handleDeleteTable s (DeleteTable tableName) = do
 
 handleCreateSchema :: State -> CreateSchema -> Process (ProcessReply State ())
 handleCreateSchema s (CreateSchema) = do
-    s' <- do_create_schema s 
+    s' <- do_create_schema s
     reply () s'
 
 handleDeleteSchema :: State -> DeleteSchema -> Process (ProcessReply State ())
 handleDeleteSchema s _ = do
-    s' <- do_delete_schema s 
+    s' <- do_delete_schema s
     reply () s'
 
 handleDirtyAllKeys :: State -> DirtyAllKeys -> Process (ProcessReply State [QKey])
@@ -551,14 +544,6 @@ handleGetState s _ = reply s s
 
 -- ---------------------------------------------------------------------
 
-
-{-
-data SKey = SK String
-
-data Storable a = Store SKey a
-                 deriving (Show,Read,Typeable)
--}
-
 do_change_table_copy_type :: State -> TableName -> TableStorage -> Process State
 do_change_table_copy_type s bucket DiscOnlyCopies = do
   logm $ "change_table_copy_type to DiscOnlyCopies for:" ++ (show (bucket))
@@ -566,7 +551,8 @@ do_change_table_copy_type s bucket DiscOnlyCopies = do
   logm $ "change_table_copy_type:(st,rt)=" ++ (show (st,rt))
   let s' = case rt of
             RecordTypeMeta       -> s {sRamMeta = Map.delete bucket (sRamMeta s)}
-            RecordTypeQueueEntry -> s {sRamQ    = Map.delete bucket (sRamQ s)}
+            -- RecordTypeQueueEntry -> s {sRamQ    = Map.delete bucket (sRamQ s)}
+            RecordTypeQueueEntry -> s {sRamQ    = strictify $ Map.delete bucket (sRamQ s)}
             _                    -> s
   -- logm $ "change_table_copy_type:s'=" ++ (show s')
 
@@ -966,4 +952,7 @@ readFileStrict f = openFile f ReadMode >>= \ h -> readIt h `finally` hClose h
 
 -- ---------------------------------------------------------------------
 
+
+strictify :: (Map.Map TableName [QEntry]) -> (Map.Map TableName [QEntry])
+strictify m = Map.fromList $ Map.empty `seq` Map.toList m
 

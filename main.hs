@@ -31,12 +31,12 @@ import qualified System.Remote.Monitoring as EKG
 -- ---------------------------------------------------------------------
 
 main = do
-  -- forkIO $ do {_<- EKG.forkServer "localhost" 8000; return ()}
-  EKG.forkServer "localhost" 8000
+  -- EKG.forkServer "localhost" 8000
 
   node <- startLocalNode
 
-  runProcess node worker
+  -- runProcess node worker
+  runProcess node worker_mnesia
 
   closeLocalNode node
   
@@ -71,7 +71,7 @@ worker = do
   ms3 <- get_state
   logm $ "mnesia state ms3:" ++ (show ms3)
 
-  liftIO $ threadDelay (10*1000000) -- 10 seconds
+  -- liftIO $ threadDelay (10*1000000) -- 10 seconds
 
   logm "worker started all"
 
@@ -81,9 +81,9 @@ worker = do
 
   -- mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..8000]
   -- mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..2000]
-  -- mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..800]
+  mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..800]
 
-  mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..51]
+  -- mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..51]
   -- mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..11]
   logm "enqueue done b"
 
@@ -92,7 +92,7 @@ worker = do
 
   -- r <- enqueue_one_message (QN "tablea" ) (qval "bar") s
 
-  liftIO $ threadDelay (3*1000000) -- 3 seconds
+  -- liftIO $ threadDelay (3*1000000) -- 3 seconds
 
   ms4 <- get_state
   logm $ "mnesia state ms4:" ++ (show ms4)
@@ -100,6 +100,37 @@ worker = do
   liftIO $ threadDelay (1*1000000) -- 1 seconds
 
   logm $ "blurble"
+
+  -- liftIO $ threadDelay (10*60*1000000) -- Ten minutes
+  return ()
+
+-- ---------------------------------------------------------------------
+
+worker_mnesia :: Process ()
+worker_mnesia = do
+  mnesiaSid <- startHroqMnesia ()
+  logm "mnesia started"
+
+  ms1 <- get_state
+  logm $ "mnesia state ms1:" ++ (show ms1)
+
+  let table = TN "mnesiattest"
+
+  create_table DiscCopies table RecordTypeQueueEntry
+
+  wait_for_tables [table] Infinity
+
+  ms2 <- get_state
+  logm $ "mnesia state ms2:" ++ (show ms2)
+
+  mapM_ (\n -> dirty_write_q table (QE (QK "a") (qval $ "bar" ++ (show n)))) [1..800]
+
+  ms4 <- get_state
+  logm $ "mnesia state ms4:" ++ (show ms4)
+
+  liftIO $ threadDelay (1*1000000) -- 1 seconds
+
+  logm $ "mnesia blurble"
 
   -- liftIO $ threadDelay (10*60*1000000) -- Ten minutes
   return ()
@@ -119,7 +150,7 @@ startLocalNode = do
 
 -- ---------------------------------------------------------------------
 
-qval str = Map.fromList [(str,str)]
+qval str = QV $ Map.fromList [(str,str)]
 
 -- ---------------------------------------------------------------------
 
