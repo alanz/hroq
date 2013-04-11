@@ -125,9 +125,9 @@ worker_mnesia = do
 
   let qe = QE (QK "a") (qval $ "bar2")
   let s =   (MnesiaState Map.empty Map.empty Map.empty)
-  -- mapM_ (\n -> dirty_write_q table (QE (QK "a") (qval $ "bar" ++ (show n)))) [1..800]
+  mapM_ (\n -> dirty_write_q table (QE (QK "a") (qval $ "bar" ++ (show n)))) [1..80000]
   -- mapM_ (\n -> dirty_write_q table qe) [1..800]
-  mapM_ (\n -> do_dirty_write_q s table qe) [1..800]
+  -- mapM_ (\n -> do_dirty_write_q s table qe) [1..800]
 
 
   -- ms4 <- get_state
@@ -155,7 +155,8 @@ startLocalNode = do
 
 -- ---------------------------------------------------------------------
 
-qval str = QV $ Map.fromList [(str,str)]
+-- qval str = QV $ Map.fromList [(str,str)]
+qval str = QV str
 
 -- ---------------------------------------------------------------------
 

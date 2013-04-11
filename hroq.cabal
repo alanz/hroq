@@ -37,7 +37,8 @@ cabal-version:       >=1.8
 --                      , ekg
 
 executable hroq
-  main-is:             main.hs
+  -- main-is:             main.hs
+  main-is:             leak.hs
   Hs-Source-Dirs:      . src
   ghc-options:
     -- The -threaded and -with-rtsopts=-T are needed for EKG

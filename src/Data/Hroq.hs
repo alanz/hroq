@@ -72,7 +72,8 @@ instance Binary QKey where
 
 -- ---------------------------------------------------------------------
 
-data QValue = QV !(Map.Map String String)
+-- data QValue = QV !(Map.Map String String)
+data QValue = QV !String
               deriving (Typeable,Read,Show)
 data QEntry = QE !QKey    -- ^Id
                  !QValue  -- ^payload
