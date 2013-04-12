@@ -2,30 +2,32 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE TemplateHaskell #-}
+{- # LANGUAGE TemplateHaskell # -}
 
 import Control.Concurrent
 import Control.Distributed.Process hiding (call)
+import Control.Distributed.Process.Internal.Types (createMessage,messageToPayload,payloadToMessage)
 import Control.Distributed.Process.Node 
 import Control.Distributed.Process.Platform
 import Control.Distributed.Process.Platform.ManagedProcess hiding (runProcess)
-import Control.Exception as Exception
-import GHC.Generics
-import Data.List(elemIndices,isInfixOf)
-import System.Directory
-import System.IO
-import System.IO.Error
-import Control.Monad(when,replicateM,foldM,liftM3,liftM2,liftM)
 import Control.Distributed.Process.Platform.Time
+import Control.Exception as Exception
+import Control.Monad(when,replicateM,foldM,liftM3,liftM2,liftM)
 import Data.Binary
 import Data.DeriveTH
+import Data.List(elemIndices,isInfixOf)
 import Data.Maybe
 import Data.RefSerialize
 import Data.Typeable (Typeable)
+import GHC.Generics
 import Network.Transport.TCP (createTransportExposeInternals, defaultTCPParameters)
-import qualified Data.ByteString.Lazy.Char8 as B
-import qualified Data.Map as Map
+import System.Directory
+import System.IO
+import System.IO.Error
 import qualified Data.ByteString.Lazy as L
+-- import qualified Data.ByteString.Lazy.Char8 as B
+import qualified Data.ByteString.Lazy as B
+import qualified Data.Map as Map
 
 -- https://github.com/tibbe/ekg
 import qualified System.Remote.Monitoring as EKG
@@ -34,56 +36,48 @@ import qualified System.Remote.Monitoring as EKG
 data TableName = TN !String
                  deriving (Show,Read,Typeable,Eq,Ord)
 
-$(derive makeBinary ''TableName)
+-- $(derive makeBinary ''TableName)
 
-{-
+
 instance Binary TableName where
   put (TN s) = put s
   get = do
     s <- get
     return (TN s)
--}
 
 
-data QKey = QK !String
-            deriving (Typeable,Show,Read,Eq,Ord,Generic)
-
- -- GHC will automatically fill out the instance
--- instance Binary QKey
-$(derive makeBinary ''QKey)
 
 
-{-
 data QKey = QK !String
             deriving (Typeable,Show,Read,Eq,Ord)
+
+-- $(derive makeBinary ''QKey)
 
 instance Binary QKey where
   put (QK i) = put i
   get = do
     i <- get
     return $ QK i
--}
+
 
 -- data QValue = QV !(Map.Map String String)
 data QValue = QV !String
               deriving (Typeable,Read,Show,Generic)
+
+-- $(derive makeBinary ''QValue)
+instance Binary QValue where
+  put (QV v) = put v
+  get = liftM QV get
+
+
+type QEntry = String
+{-
 data QEntry = QE !QKey    -- ^Id
                  !QValue  -- ^payload
               deriving (Typeable,Read,Show,Generic)
 
--- instance Binary QValue 
-$(derive makeBinary ''QValue)
+-- $(derive makeBinary ''QEntry)
 
-{-
-instance Binary QValue where
-  put (QV v) = put v
-  get = liftM QV get
--}
-
--- instance Binary QEntry
-$(derive makeBinary ''QEntry)
-
-{-
 instance Binary QEntry where
   put (QE k v) = put k >> put v
   get = do
@@ -94,34 +88,29 @@ instance Binary QEntry where
 
 
 --  , dirty_write_q
-data DirtyWriteQ = DirtyWriteQ !TableName !QEntry
+data DirtyWriteQ = DirtyWriteQ !TableName -- !QEntry
                    deriving (Typeable, Show,Generic)
 
 -- instance Binary DirtyWriteQ 
-$(derive makeBinary ''DirtyWriteQ)
+-- $(derive makeBinary ''DirtyWriteQ)
 
-{-
 instance Binary DirtyWriteQ where
-  put (DirtyWriteQ tn key) = put tn >> put key
-  get = liftM2 DirtyWriteQ get get
--}
+  put (DirtyWriteQ {- tn -} key) = {- put tn >> -} put key
+  -- get = liftM2 DirtyWriteQ get get
+  get = liftM DirtyWriteQ get -- get
 
 -- , get_state
 data GetState = GetState
                 deriving (Typeable,Show,Generic)
 
--- instance Binary GetState
-$(derive makeBinary ''GetState)
+-- $(derive makeBinary ''GetState)
 
-{-
 instance Binary GetState where
   put GetState = putWord8 1
   get = do
           v <- getWord8
           case v of
             1 -> return GetState
--}
-
 
 
 
@@ -148,24 +137,23 @@ worker = do
   
   let table = TN "mnesiattest"
 
-  -- create_table DiscCopies table RecordTypeQueueEntry
+  -- mapM_ (\n -> dirty_write_q sid table (QE (QK "a") (qval $ "bar" ++ (show n)))) [1..800]
+  mapM_ (\n -> dirty_write_q sid table ("bar" ++ (show n))) [1..800]
 
-  -- wait_for_tables [table] Infinity
 
-  -- ms2 <- get_state
-  -- logm $ "mnesia state ms2:" ++ (show ms2)
+{-
+  let x = [] `seq` map (\n -> messageToPayload $ createMessage $ (QE (QK "a") (qval $ "bar" ++ (show n))) ) [1..800]
+  let y = [] `seq` map (\m -> payloadToMessage m) x
 
-  let qe = QE (QK "a") (qval $ "bar2")
-  let s =   0
-  mapM_ (\n -> dirty_write_q sid table (QE (QK "a") (qval $ "bar" ++ (show n)))) [1..800]
-  -- mapM_ (\n -> dirty_write_q table qe) [1..800]
-  -- mapM_ (\n -> do_dirty_write_q s table qe) [1..800]
+  logm $ "messages=" ++ (show (x)) -- Force evaluation of x
+  logm $ "messages=" ++ (show (y)) -- Force evaluation of y
+-}
 
   liftIO $ threadDelay (1*1000000) -- 1 seconds
 
   logm $ "mnesia blurble"
 
-  -- liftIO $ threadDelay (10*60*1000000) -- Ten minutes
+
   return ()
 
 -- ---------------------------------------------------------------------
@@ -209,11 +197,13 @@ initFunc _ = do
 
 
 -- ---------------------------------------------------------------------
+
 -- -----------------------------------------------------------------------------
 -- API
 
 dirty_write_q :: ProcessId -> TableName -> QEntry -> Process ()
-dirty_write_q sid tablename val = call sid (DirtyWriteQ tablename val)
+-- dirty_write_q sid tablename val = call sid (DirtyWriteQ tablename val)
+dirty_write_q sid tablename val = call sid (DirtyWriteQ tablename)
 
 --------------------------------------------------------------------------------
 -- Implementation                                                             --
@@ -237,9 +227,10 @@ serverDefinition = defaultProcess {
 -- handlers
 
 handleDirtyWriteQ :: State -> DirtyWriteQ -> Process (ProcessReply State ())
-handleDirtyWriteQ s (DirtyWriteQ tableName val) = do
-    s' <- do_dirty_write_q s tableName val
-    reply () s'
+handleDirtyWriteQ s (DirtyWriteQ {- tableName -} val) = do
+    -- s' <- do_dirty_write_q s tableName val
+    -- reply () s'
+    reply () s
 
 -- ---------------------------------------------------------------------
 -- actual workers
