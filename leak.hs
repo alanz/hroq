@@ -1,6 +1,8 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 import Control.Concurrent
 import Control.Distributed.Process hiding (call)
@@ -8,6 +10,7 @@ import Control.Distributed.Process.Node
 import Control.Distributed.Process.Platform
 import Control.Distributed.Process.Platform.ManagedProcess hiding (runProcess)
 import Control.Exception as Exception
+import GHC.Generics
 import Data.List(elemIndices,isInfixOf)
 import System.Directory
 import System.IO
@@ -26,6 +29,101 @@ import qualified Data.ByteString.Lazy as L
 
 -- https://github.com/tibbe/ekg
 import qualified System.Remote.Monitoring as EKG
+
+
+data TableName = TN !String
+                 deriving (Show,Read,Typeable,Eq,Ord)
+
+$(derive makeBinary ''TableName)
+
+{-
+instance Binary TableName where
+  put (TN s) = put s
+  get = do
+    s <- get
+    return (TN s)
+-}
+
+
+data QKey = QK !String
+            deriving (Typeable,Show,Read,Eq,Ord,Generic)
+
+ -- GHC will automatically fill out the instance
+-- instance Binary QKey
+$(derive makeBinary ''QKey)
+
+
+{-
+data QKey = QK !String
+            deriving (Typeable,Show,Read,Eq,Ord)
+
+instance Binary QKey where
+  put (QK i) = put i
+  get = do
+    i <- get
+    return $ QK i
+-}
+
+-- data QValue = QV !(Map.Map String String)
+data QValue = QV !String
+              deriving (Typeable,Read,Show,Generic)
+data QEntry = QE !QKey    -- ^Id
+                 !QValue  -- ^payload
+              deriving (Typeable,Read,Show,Generic)
+
+-- instance Binary QValue 
+$(derive makeBinary ''QValue)
+
+{-
+instance Binary QValue where
+  put (QV v) = put v
+  get = liftM QV get
+-}
+
+-- instance Binary QEntry
+$(derive makeBinary ''QEntry)
+
+{-
+instance Binary QEntry where
+  put (QE k v) = put k >> put v
+  get = do
+    k <- get
+    v <- get
+    return $ QE k v 
+-}
+
+
+--  , dirty_write_q
+data DirtyWriteQ = DirtyWriteQ !TableName !QEntry
+                   deriving (Typeable, Show,Generic)
+
+-- instance Binary DirtyWriteQ 
+$(derive makeBinary ''DirtyWriteQ)
+
+{-
+instance Binary DirtyWriteQ where
+  put (DirtyWriteQ tn key) = put tn >> put key
+  get = liftM2 DirtyWriteQ get get
+-}
+
+-- , get_state
+data GetState = GetState
+                deriving (Typeable,Show,Generic)
+
+-- instance Binary GetState
+$(derive makeBinary ''GetState)
+
+{-
+instance Binary GetState where
+  put GetState = putWord8 1
+  get = do
+          v <- getWord8
+          case v of
+            1 -> return GetState
+-}
+
+
+
 
 -- ---------------------------------------------------------------------
 
@@ -92,39 +190,6 @@ qval str = QV str
 
 -- ---------------------------------------------------------------------
 
-data QKey = QK !String
-            deriving (Typeable,Show,Read,Eq,Ord)
-
-instance Binary QKey where
-  put (QK i) = put i
-  get = do
-    i <- get
-    return $ QK i
-
-
--- data QValue = QV !(Map.Map String String)
-data QValue = QV !String
-              deriving (Typeable,Read,Show)
-data QEntry = QE !QKey    -- ^Id
-                 !QValue  -- ^payload
-              deriving (Typeable,Read,Show)
-
-instance Binary QValue where
-  put (QV v) = put v
-  get = liftM QV get
-
-
-instance Binary QEntry where
-  put (QE k v) = put k >> put v
-  get = do
-    k <- get
-    v <- get
-    return $ QE k v 
-
-instance Serialize QEntry where
-  showp = showpBinary
-  readp = readpBinary
-
 -- ---------------------------------------------------------------------
 
 startHroqMnesia :: a -> Process ProcessId
@@ -142,37 +207,8 @@ initFunc _ = do
   let s = ST 0
   return $ InitOk s Infinity
 
---  , dirty_write_q
-data DirtyWriteQ = DirtyWriteQ !TableName !QEntry
-                   deriving (Typeable, Show)
-
-instance Binary DirtyWriteQ where
-  put (DirtyWriteQ tn key) = put tn >> put key
-  get = liftM2 DirtyWriteQ get get
-
-
--- , get_state
-data GetState = GetState
-                deriving (Typeable,Show)
-
-instance Binary GetState where
-  put GetState = putWord8 1
-  get = do
-          v <- getWord8
-          case v of
-            1 -> return GetState
 
 -- ---------------------------------------------------------------------
-
-data TableName = TN !String
-                 deriving (Show,Read,Typeable,Eq,Ord)
-
-instance Binary TableName where
-  put (TN s) = put s
-  get = do
-    s <- get
-    return (TN s)
-
 -- -----------------------------------------------------------------------------
 -- API
 
