@@ -115,3 +115,4 @@ serverDefinition = defaultProcess {
      , terminateHandler = \_ reason -> do { say $ "HroqMnesia terminateHandler:" ++ (show reason) }
     } :: ProcessDefinition State
 
+
