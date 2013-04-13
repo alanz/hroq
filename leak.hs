@@ -3,10 +3,11 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DeriveGeneric #-}
 {- # LANGUAGE TemplateHaskell # -}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 import Control.Concurrent
 import Control.Distributed.Process hiding (call)
-import Control.Distributed.Process.Internal.Types (createMessage,messageToPayload,payloadToMessage)
+import Control.Distributed.Process.Internal.Types (createMessage,messageToPayload,payloadToMessage,forever')
 import Control.Distributed.Process.Node 
 import Control.Distributed.Process.Platform
 import Control.Distributed.Process.Platform.ManagedProcess hiding (runProcess)
@@ -24,9 +25,10 @@ import Network.Transport.TCP (createTransportExposeInternals, defaultTCPParamete
 import System.Directory
 import System.IO
 import System.IO.Error
-import qualified Data.ByteString.Lazy as L
 import qualified Data.ByteString.Lazy as B
+import qualified Data.ByteString.Lazy as L
 import qualified Data.Map as Map
+
 
 -- https://github.com/tibbe/ekg
 import qualified System.Remote.Monitoring as EKG
@@ -50,10 +52,14 @@ main = do
 
 worker :: Process ()
 worker = do
+  {-
   sid <- startHroqMnesia ()
   say "mnesia started"
   
   mapM_ (\n -> (call sid ("bar" ++ (show n))) :: Process ()  ) [1..800]
+  liftIO $ threadDelay (1*1000000) -- 1 seconds
+  mapM_ (\n -> (call sid ("bar" ++ (show n))) :: Process ()  ) [1..800]
+  -}
 
   {-
   let x = [] `seq` map (\n -> messageToPayload $ createMessage $ ("bar" ++ (show n)) ) [1..800]
@@ -62,12 +68,21 @@ worker = do
   say $ "messages=" ++ (show (y)) -- Force evaluation of y
   -}
 
+
+  server <- spawnLocal $ forever' $ do
+    -- receiveWait [ match (\(s :: String) -> return ()) ]
+    receiveWait [ match (\(s :: String) -> do { say $ "got:" ++ s;return ()}) ]
+
+  mapM_ (\n -> (do {waitMs 5;((send server ("bar" ++ (show n))) :: Process () ) } )) [1..800]
+
   liftIO $ threadDelay (1*1000000) -- 1 seconds
 
   say $ "mnesia blurble"
 
 
   return ()
+
+waitMs x  = liftIO $ threadDelay (1000 * x)
 
 -- ---------------------------------------------------------------------
 

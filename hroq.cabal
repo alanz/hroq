@@ -61,6 +61,7 @@ executable hroq
                        , derive
                        , directory
                        , ghc-prim
+                       , network-transport
                        , network-transport-tcp
                        , random
                        , ekg
