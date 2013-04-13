@@ -56,10 +56,20 @@ worker = do
   sid <- startHroqMnesia ()
   say "mnesia started"
   
-  mapM_ (\n -> (call sid ("bar" ++ (show n))) :: Process ()  ) [1..800]
+  -- mapM_ (\n -> do { delayMs 5;((call sid ("bar" ++ (show n))) :: Process ()) }  ) [1..800]
+  mapM_ (\n -> ((cast sid ("bar" ++ (show n))) :: Process ())  ) [1..800]
   liftIO $ threadDelay (1*1000000) -- 1 seconds
   mapM_ (\n -> (call sid ("bar" ++ (show n))) :: Process ()  ) [1..800]
   -}
+
+  sid <- startStateless
+  say "mnesia started"
+  
+  -- mapM_ (\n -> do { delayMs 5;((call sid ("bar" ++ (show n))) :: Process ()) }  ) [1..800]
+  mapM_ (\n -> ((cast sid ("bar" ++ (show n))) :: Process ())  ) [1..800]
+  liftIO $ threadDelay (1*1000000) -- 1 seconds
+  mapM_ (\n -> (call sid ("bar" ++ (show n))) :: Process ()  ) [1..800]
+  
 
   {-
   let x = [] `seq` map (\n -> messageToPayload $ createMessage $ ("bar" ++ (show n)) ) [1..800]
@@ -68,12 +78,14 @@ worker = do
   say $ "messages=" ++ (show (y)) -- Force evaluation of y
   -}
 
-
+  {-
   server <- spawnLocal $ forever' $ do
     -- receiveWait [ match (\(s :: String) -> return ()) ]
     receiveWait [ match (\(s :: String) -> do { say $ "got:" ++ s;return ()}) ]
 
-  mapM_ (\n -> (do {waitMs 5;((send server ("bar" ++ (show n))) :: Process () ) } )) [1..800]
+  mapM_ (\n -> (do {delayMs 5;((send server ("bar" ++ (show n))) :: Process () ) } )) [1..800]
+  -}
+
 
   liftIO $ threadDelay (1*1000000) -- 1 seconds
 
@@ -82,7 +94,7 @@ worker = do
 
   return ()
 
-waitMs x  = liftIO $ threadDelay (1000 * x)
+delayMs x  = liftIO $ threadDelay (1000 * x)
 
 -- ---------------------------------------------------------------------
 
@@ -100,6 +112,12 @@ startHroqMnesia :: a -> Process ProcessId
 startHroqMnesia initParams = do
   let server = serverDefinition
   sid <- spawnLocal $ start initParams initFunc server >> return ()
+  return sid
+
+startStateless :: Process ProcessId
+startStateless = do
+  let server = statelessDefinition
+  sid <- spawnLocal $ start () (statelessInit Infinity) server >> return ()
   return sid
 
 -- data State = ST Int
@@ -120,6 +138,7 @@ serverDefinition :: ProcessDefinition State
 serverDefinition = defaultProcess {
      apiHandlers = [
           handleCall ((\s v -> reply () s) :: State -> String -> Process (ProcessReply State ()))
+        , handleCast ((\s v -> continue s) :: State -> String -> Process (ProcessAction State ))
         ]
     , infoHandlers =
         [
@@ -130,4 +149,19 @@ serverDefinition = defaultProcess {
      , terminateHandler = \_ reason -> do { say $ "HroqMnesia terminateHandler:" ++ (show reason) }
     } :: ProcessDefinition State
 
+
+statelessDefinition :: ProcessDefinition ()
+statelessDefinition = statelessProcess {
+     apiHandlers = [
+          handleCall_ ((\(v::String) -> return ()))
+        , handleCast_ ((\(v::String) -> continue_ ) )
+        ]
+    , infoHandlers =
+        [
+        -- handleInfo_ (\(ProcessMonitorNotification _ _ r) -> say $ show r >> continue_)
+         handleInfo (\dict (ProcessMonitorNotification _ _ r) -> do {say $ show r; continue dict })
+        ]
+     , timeoutHandler = \_ _ -> stop $ TerminateOther "timeout az"
+     , terminateHandler = \_ reason -> do { say $ "HroqMnesia terminateHandler:" ++ (show reason) }
+    } :: ProcessDefinition ()
 
