@@ -10,7 +10,9 @@ import Control.Distributed.Process hiding (call)
 import Control.Distributed.Process.Internal.Types (createMessage,messageToPayload,payloadToMessage,forever')
 import Control.Distributed.Process.Node 
 import Control.Distributed.Process.Platform
+import Control.Distributed.Process.Platform.Async hiding (check)
 import Control.Distributed.Process.Platform.ManagedProcess hiding (runProcess)
+import Control.Distributed.Process.Platform.ManagedProcess.Client (callAsync)
 import Control.Distributed.Process.Platform.Time
 import Control.Exception as Exception
 import Control.Monad(when,replicateM,foldM,liftM3,liftM2,liftM)
@@ -58,6 +60,7 @@ worker = do
   -- mapM_ (\n -> ((cast sid ("bar" ++ (show n))) :: Process ())  ) [1..800]
   liftIO $ threadDelay (1*1000000) -- 1 seconds
   mapM_ (\n -> (call sid ("bar" ++ (show n))) :: Process ()  ) [1..800]
+  -- mapM_ (\n -> ((callAsync sid ("bar" ++ (show n))) :: Process (Async ()) ) >>= wait  ) [1..800]
   
 
 {-
