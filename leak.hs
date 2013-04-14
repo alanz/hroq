@@ -57,10 +57,14 @@ worker = do
   sid <- startHroqMnesia ()
   say "mnesia started"
   
-  -- mapM_ (\n -> ((cast sid ("bar" ++ (show n))) :: Process ())  ) [1..800]
-  liftIO $ threadDelay (1*1000000) -- 1 seconds
+
   mapM_ (\n -> (call sid ("bar" ++ (show n))) :: Process ()  ) [1..800]
   -- mapM_ (\n -> ((callAsync sid ("bar" ++ (show n))) :: Process (Async ()) ) >>= wait  ) [1..800]
+  liftIO $ threadDelay (1*1000000) -- 1 seconds
+  mapM_ (\n -> ((cast sid ("foo" ++ (show n))) :: Process ())  ) [1..800]
+  liftIO $ threadDelay (3*1000000) -- 3 seconds
+  mapM_ (\n -> (call sid ("baz" ++ (show n))) :: Process ()  ) [1..80]
+  liftIO $ threadDelay (3*1000000) -- 3 seconds
   
 
 {-
@@ -139,9 +143,10 @@ initFunc _ = do
 serverDefinition :: ProcessDefinition State
 serverDefinition = defaultProcess {
      apiHandlers = [
-          handleCall ((\s v -> reply () s) :: State -> String -> Process (ProcessReply State ()))
+          -- handleCall ((\s v -> reply () s) :: State -> String -> Process (ProcessReply State ()))
+          handleCall ((\s v -> do {say $ "call got " ++ v;reply () s}) :: State -> String -> Process (ProcessReply State ()))
         -- , handleCast ((\s v -> continue s) :: State -> String -> Process (ProcessAction State ))
-        , handleCast ((\s v -> do {say $ "got " ++ v;continue s}) :: State -> String -> Process (ProcessAction State ))
+        , handleCast ((\s v -> do {say $ "cast got " ++ v;continue s}) :: State -> String -> Process (ProcessAction State ))
         ]
     , infoHandlers =
         [

@@ -10,6 +10,7 @@
 #cabal build --ghc-options="-O2 -prof -auto-all -caf-all -fforce-recomp -fprof-auto-top -fprof-auto-calls -osuf=.o_p"
 
 
-cabal build --ghc-options="-O2 -prof -auto-all -caf-all -fforce-recomp -fprof-auto-top -fprof-auto-calls "
+cabal build --ghc-options="-threaded -O2 -prof -auto-all -caf-all -fforce-recomp -fprof-auto-top -fprof-auto-calls "
+
 
 

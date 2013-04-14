@@ -12,3 +12,6 @@
 /log/hroq.log
 /src/Data/.hroqdata/
 /hroq.prof
+/hroq.threaded.ps
+/hroq.withlogstate.ps
+/play.hs
