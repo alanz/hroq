@@ -6,6 +6,7 @@ module Data.HroqQueue
   (
     enqueue
   , dequeue
+  , peek
 
   , startQueue
 
@@ -20,21 +21,23 @@ import Control.Distributed.Process.Platform
 import Control.Distributed.Process.Platform.Async
 import Control.Distributed.Process.Platform.ManagedProcess hiding (runProcess)
 import Control.Distributed.Process.Platform.Time
+import Control.Exception as Exception
+import Control.Monad(when,replicateM,foldM,liftM3,liftM4,liftM2,liftM)
 import Data.Binary
 import Data.DeriveTH
-import Data.List
-import Data.Typeable (Typeable)
-import Network.Transport.TCP (createTransportExposeInternals, defaultTCPParameters)
--- import qualified Data.ByteString.Lazy as B
-import qualified Data.Map as Map
-import qualified Data.Set as Set
 import Data.Hroq
-import Data.HroqLogger
 import Data.HroqGroups
-import qualified Data.HroqMnesia as HM
+import Data.HroqLogger
 import Data.HroqQueueMeta
 import Data.HroqStatsGatherer
 import Data.HroqUtil
+import Data.List
+import Data.Maybe
+import Data.Typeable (Typeable)
+import Network.Transport.TCP (createTransportExposeInternals, defaultTCPParameters)
+import qualified Data.HroqMnesia as HM
+import qualified Data.Map as Map
+import qualified Data.Set as Set
 
 
 --------------------------------------------------------------------------------
@@ -48,40 +51,55 @@ import Data.HroqUtil
 
 
 -- type QWorker = (QValue -> QValue)
-type QWorker = (Int) -- Keep it simple while sorting the plumbing
--- instance Show QWorker where
---   show _ = "QWorker"
+type QWorker = WorkerFunc
+instance Show QWorker where
+   show _ = "QWorker"
 
 -- operations to be exposed
 
 data Enqueue = Enqueue !QName !QValue
                deriving (Typeable, Show)
-data Dequeue = Dequeue !QName !QWorker (Maybe ProcessId)
-               deriving (Typeable, Show)-- Remove one entry
 
-{-
-$(derive makeBinary ''QName)
--- $(derive makeBinary ''QWorker) -- Need a closure, actually
-$(derive makeBinary ''Enqueue)
-$(derive makeBinary ''Dequeue)
--}
+data ReadOp = ReadOpDequeue !QName !(Closure (QWorker))  (Maybe ProcessId)
+            | ReadOpPeek    !QName
+               deriving (Typeable, Show)
+
+data ReadOpReply = ReadOpReplyError !String
+                 | ReadOpReplyEmpty
+                 | ReadOpReplyOk
+                 | ReadOpReplyMsg !QEntry
+                 deriving (Typeable,Show)
+
+instance Binary ReadOpReply where
+  put (ReadOpReplyError e) = put 'R' >> put e
+  put (ReadOpReplyEmpty)   = put 'E'
+  put (ReadOpReplyOk)      = put 'K'
+  put (ReadOpReplyMsg v)   = put 'M' >> put v
+
+  get = do
+    sel <- get
+    case sel of
+      'R' -> liftM ReadOpReplyError get
+      'E' -> return ReadOpReplyEmpty
+      'K' -> return ReadOpReplyOk
+      'M' -> liftM ReadOpReplyMsg get
+
 
 instance Binary Enqueue where
   put (Enqueue n v) = put n >> put v
+  get = liftM2 Enqueue get get
+
+
+instance Binary ReadOp where
+  put (ReadOpDequeue n w mpid) = put 'D' >> put n >> put w >> put mpid
+  put (ReadOpPeek n)           = put 'P' >> put n
   get = do
-    n <- get
-    v <- get
-    return (Enqueue n v)
+    sel <- get
+    case sel of
+      'D' -> liftM3 ReadOpDequeue get get get
+      'P' -> liftM ReadOpPeek get
 
-instance Binary Dequeue where
-  put (Dequeue n w mpid) = put n >> put w >> put mpid
-  get = do
-    n <- get
-    w <- get
-    mpid <- get
-    return (Dequeue n w mpid)
-
-
+type WorkerFunc = QKey -> QEntry -> Process (Either String ())
 
 type CleanupFunc = String
 
@@ -154,8 +172,11 @@ enqueue sid q v = call sid (Enqueue q v)
 -- dequeue(QueueName, WorkerModule, WorkerFunc, WorkerParams, SubscribeIfEmptyPid)  when is_atom(QueueName) and (is_pid(SubscribeIfEmptyPid) or (SubscribeIfEmptyPid == undefined)) ->
 --     gen_server:call(?NAME(QueueName), {read, {dequeue, WorkerModule, WorkerFunc, WorkerParams, SubscribeIfEmptyPid}}, infinity).
 
-dequeue :: ProcessId -> QName -> QWorker -> Maybe ProcessId -> Process ()
-dequeue sid q w mp = call sid (Dequeue q w mp)
+dequeue :: ProcessId -> QName -> Closure QWorker -> Maybe ProcessId -> Process ReadOpReply
+dequeue sid q w mp = call sid (ReadOpDequeue q w mp)
+
+peek :: ProcessId -> QName -> Process ReadOpReply
+peek sid q = call sid (ReadOpPeek q)
 
 
 -- TODO: erlang version starts a Q gen server per Q, uses the QName to
@@ -204,7 +225,7 @@ initFunc (queueName,appInfo,doCleanup) = do
         ok = change_table_copy_type(CurrOverflowBucket, disc_copies)
     end,
 -}
-    if currProcBucket == currOverflowBucket 
+    if currProcBucket == currOverflowBucket
       then do
         HM.change_table_copy_type currProcBucket HM.DiscCopies
       else do
@@ -355,7 +376,7 @@ serverDefinition :: ProcessDefinition State
 serverDefinition = defaultProcess {
      apiHandlers = [
           handleCall handleEnqueue
-        , handleCall handleDequeue
+        , handleCall handleReadOp
         ]
     , infoHandlers =
         [
@@ -385,8 +406,11 @@ handle_call({enqueue, QueueName, Message}, From, ServerState)->
 -}
 
 
-handleDequeue :: State -> Dequeue -> Process (ProcessReply State ())
-handleDequeue s (Dequeue q w mp) = do {(logm "dequeuing") ; reply () (s) }
+handleReadOp :: State -> ReadOp -> Process (ProcessReply State ReadOpReply)
+handleReadOp s readOp = do
+    -- {(logm "dequeuing") ; reply () (s) }
+    (res,s') <- do_read_op readOp s
+    reply res s'
 
 
 -- ---------------------------------------------------------------------
@@ -571,15 +595,215 @@ make_next_bucket(QueueName) ->
 make_next_bucket :: QName -> Process TableName
 make_next_bucket queueName = do
   newBucket <- build_next_bucket_name queueName
-  meta_add_bucket queueName newBucket
+  _ <- meta_add_bucket queueName newBucket
   create_table HM.DiscCopies newBucket
   return newBucket
 
 
 -- ---------------------------------------------------------------------
+
+do_read_op :: ReadOp -> State -> Process (ReadOpReply,State)
+do_read_op op s = do
+    logm $ "do_read_op:" ++ (show op)
+{-
+handle_call({read, Action}, _From,  #eroq_queue_state{total_queue_size = Qs} = ServerState) ->
+-}
+    let qs = qsTotalQueueSize s
+{-
+    if (Qs == 0) ->
+-}
+
+    (res,s') <- if qs == 0
+      then
+        case op of
+          ReadOpDequeue q worker mpid -> do
+            if isJust mpid
+              then do
+                -- TODO: add monitoring
+                return (ReadOpReplyEmpty,s)
+              else do return (ReadOpReplyEmpty,s)
+          _ -> do return (ReadOpReplyEmpty,s)
+{-
+        case Action of
+        {dequeue, _, _, _, SubscribeIfEmptyPid} ->
+            if is_pid(SubscribeIfEmptyPid) ->
+                MonRef = monitor(process, SubscribeIfEmptyPid),
+                SubsPidDict = ServerState#eroq_queue_state.subscriber_pid_dict,
+                case dict:find(SubscribeIfEmptyPid, SubsPidDict) of
+                {ok, _} ->
+                    %Already in the list of subs ...
+                    {reply, {error, empty}, ServerState};
+                _ ->
+                    NewSubsPidDict = dict:store(SubscribeIfEmptyPid, MonRef, SubsPidDict),
+                    {reply, {error, empty}, ServerState#eroq_queue_state{subscriber_pid_dict = NewSubsPidDict}}
+                end;
+            true ->
+                {reply, {error, empty}, ServerState}
+            end;
+        _ ->
+            {reply, {error, empty}, ServerState}
+        end;
+-}
+      else do
+{-
+    true ->
+
+        QueueName      = ServerState#eroq_queue_state.queue_name,
+        AppInfo        = ServerState#eroq_queue_state.app_info,
+        ProcBucket     = ServerState#eroq_queue_state.curr_proc_bucket,
+        OverflowBucket = ServerState#eroq_queue_state.curr_overflow_bucket,
+        EnqueueCount   = ServerState#eroq_queue_state.enqueue_count,
+
+        [Key | T]      = ServerState#eroq_queue_state.index_list,
+-}
+        let
+          queueName      = qsQueueName          s
+          appInfo        = qsAppInfo            s
+          procBucket     = qsCurrProcBucket     s
+          overflowBucket = qsCurrOverflowBucket s
+          enqueueCount   = qsEnqueueCount       s
+
+          (key:t)        = qsIndexList          s
+
+        case op of
+          ReadOpDequeue q worker _mpid -> do
+            r <- process_the_message key procBucket worker
+            case r of
+              Right () -> do
+                let
+                  newTotalQueuedMsg = (qsTotalQueueSize s) - 1
+                  newDequeueCount   = (qsDequeueCount   s) + 1
+
+                (newProcBucket,newIndexList) <-
+                  case t of
+                    [] -> do
+                      if procBucket == overflowBucket
+                        then return (procBucket,[])
+                        else do
+                          HM.delete_table procBucket
+                          (nextBucket:_) <- meta_del_bucket queueName procBucket
+                          HM.change_table_copy_type nextBucket HM.DiscCopies
+                          indexList <- HM.dirty_all_keys nextBucket
+                          return (nextBucket, sort indexList)
+                    _ -> do return (procBucket,t)
+
+                publish_queue_stats queueName (appInfo,newTotalQueuedMsg,enqueueCount,newDequeueCount)
+
+                let s' = s { qsCurrProcBucket = newProcBucket
+                           , qsIndexList      = newIndexList
+                           , qsTotalQueueSize = newTotalQueuedMsg
+                           , qsDequeueCount   = newDequeueCount }
+                return (ReadOpReplyOk, s')
+              Left err -> do
+                return (ReadOpReplyError err, s)
+
+          ReadOpPeek q -> do
+            res <- do_peek key procBucket
+            return (res,s)
+{-
+        case Action of
+        {dequeue, WorkerModule, WorkerFunc, WorkerParams, _} ->
+
+            case process_the_message(Key, ProcBucket, WorkerModule, WorkerFunc, WorkerParams) of
+            ok ->
+
+                NewTotalQueuedMsg = ServerState#eroq_queue_state.total_queue_size-1,
+                NewDequeueCount   = ServerState#eroq_queue_state.dequeue_count+1,
+
+                {NewProcBucket, NewIndexList} =
+                case T of
+                [] ->
+                    if (ProcBucket == OverflowBucket) ->
+                        {ProcBucket, []};
+                    true ->
+                        ok = eroq_util:retry_delete_table(10, ProcBucket),
+                        {ok, [NextBucket | _]} = eroq_queue_meta:del_bucket(QueueName, ProcBucket),
+                        ok = change_table_copy_type(NextBucket, disc_copies),
+                        {NextBucket, lists:sort(mnesia:dirty_all_keys(NextBucket))}
+                    end;
+                _ ->
+                    {ProcBucket, T}
+                end,
+
+                catch(eroq_stats_gatherer:publish_queue_stats(QueueName, {AppInfo, NewTotalQueuedMsg, EnqueueCount, NewDequeueCount})),
+
+                {reply, ok, ServerState#eroq_queue_state{curr_proc_bucket = NewProcBucket, index_list = NewIndexList, total_queue_size = NewTotalQueuedMsg, dequeue_count = NewDequeueCount}};
+
+            {error, Reason} ->
+                {reply, {error, Reason}, ServerState}
+            end;
+
+        peek ->
+            {reply, do_peek(Key, ProcBucket), ServerState}
+        end
+
+    end;
+
+-}
+    return (res,s')
+
+-- ---------------------------------------------------------------------
+{-
+do_peek(Key, SourceBucket) ->
+    case catch(eroq_util:retry_dirty_read(10, SourceBucket, Key)) of
+    {ok, [#eroq_message{data = Message}]} ->
+        {ok, Message};
+    Reason ->
+        {error, Reason}
+    end.
+-}
+
+do_peek :: QKey -> TableName -> Process ReadOpReply
+do_peek key sourceBucket = do
+  res <- HM.dirty_read_q sourceBucket key
+  case res of
+    Just msg -> return (ReadOpReplyMsg msg)
+    Nothing  -> return (ReadOpReplyError (error $ "do_peek: read (sourceBucket,key) failed for " ++ (show (sourceBucket,key)) ))
+
+-- ---------------------------------------------------------------------
+
+{-
+process_the_message(Key, SourceBucket, WorkerModule, WorkerFunc, WorkerParams) ->
+    case catch(eroq_util:retry_dirty_read(10, SourceBucket, Key)) of
+    {ok, [#eroq_message{id = Key, data = Message}]} ->
+        case catch(WorkerModule:WorkerFunc(Key, Message, WorkerParams)) of
+        ok ->
+            ok = eroq_util:retry_dirty_delete(10, SourceBucket, Key);
+        Reason ->
+            {error, Reason}
+        end;
+    {ok, []} ->
+        ?warn({process_the_message, "message not found", Key, SourceBucket}),
+        ok;
+    {error, Reason} ->
+        {error, Reason}
+    end.
+
+-}
+
+
+process_the_message :: QKey -> TableName -> Closure WorkerFunc -> Process (Either String ())
+process_the_message key sourceBucket worker = do
+  logm $ "process_the_message undefined:(key,sourceBucket)=" ++ (show (key,sourceBucket))
+
+  res <- HM.dirty_read_q sourceBucket key
+  case res of
+    Just msg -> do
+      f <- unClosure worker
+      r <- f key msg
+      case r of
+        Right () -> do
+          HM.dirty_delete_q sourceBucket key
+          return $ Right ()
+        Left err -> return (Left err)
+    Nothing  -> do
+      return (Left "process_the_message:not implemented")
+
+
+-- ---------------------------------------------------------------------
 {-
 %worker piggies
-create_table(Type, TableName) -> 
+create_table(Type, TableName) ->
     case mnesia:create_table(TableName, [{attributes, record_info(fields, eroq_message)}, {type, set}, {Type, [node()]}, {record_name, eroq_message}]) of
     {atomic, ok} ->
         ok;

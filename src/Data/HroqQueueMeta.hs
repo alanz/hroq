@@ -104,6 +104,38 @@ meta_all_buckets queueName = do
 
 -- ---------------------------------------------------------------------
 
+meta_del_bucket :: MetaKey -> TableName -> Process [TableName]
 meta_del_bucket queueName bucket = do
   logm "meta_del_bucket undefined"
+  r <- dirty_read hroq_queue_meta_table queueName
+  case r of
+    Just (MAllBuckets _ b _) -> do
+      let newBuckets = b \\ [bucket]
+      timestamp <- getTimeStamp
+      retry_dirty_write retryCnt hroq_queue_meta_table (MAllBuckets queueName newBuckets timestamp)
+      return newBuckets
+    Nothing -> do
+
+      logm $ "meta_del_bucket (queueName,bucket) failed for " ++ (show (queueName,bucket))
+      return []
+
+{-
+-spec del_bucket(atom(), atom()) -> ok | {error, any()}.
+del_bucket(QName, BucketId) ->
+    case eroq_util:retry_dirty_read(10, eroq_queue_meta_table, QName) of
+    {ok, []} ->
+        {ok, []};
+    {ok, [#eroq_queue_meta{buckets = B} = Meta] } ->
+        NewBuckets = lists:delete(BucketId, B),
+        case eroq_util:retry_dirty_write(10, eroq_queue_meta_table, Meta#eroq_queue_meta{buckets = NewBuckets}) of
+        ok ->
+            {ok, NewBuckets};
+        Error ->
+            Error
+        end;
+    Error ->
+        Error
+    end.
+-}
+
 

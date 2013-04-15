@@ -15,6 +15,7 @@ module Data.HroqMnesia
   , dirty_write_q
   , dirty_read
   , dirty_read_q
+  , dirty_delete_q
   , dirty_all_keys
   , wait_for_tables
 
@@ -119,6 +120,10 @@ data DirtyRead = DirtyRead !TableName !MetaKey
 data DirtyReadQ = DirtyReadQ !TableName !QKey
                    deriving (Typeable, Show)
 
+--  , dirty_delete_q
+data DirtyDeleteQ = DirtyDeleteQ !TableName !QKey
+                   deriving (Typeable, Show)
+
 --  , dirty_write
 data DirtyWrite = DirtyWrite !TableName !Meta
                    deriving (Typeable, Show)
@@ -182,6 +187,10 @@ instance Binary DirtyRead where
 instance Binary DirtyReadQ where
   put (DirtyReadQ tn key) = put tn >> put key
   get = liftM2 DirtyReadQ get get
+
+instance Binary DirtyDeleteQ where
+  put (DirtyDeleteQ tn key) = put tn >> put key
+  get = liftM2 DirtyDeleteQ get get
 
 instance Binary DirtyWrite where
   put (DirtyWrite tn key) = put tn >> put key
@@ -349,6 +358,9 @@ dirty_read tableName key = mycall (DirtyRead tableName key)
 dirty_read_q :: TableName -> QKey -> Process (Maybe QEntry)
 dirty_read_q tableName key = mycall (DirtyReadQ tableName key)
 
+dirty_delete_q :: TableName -> QKey -> Process ()
+dirty_delete_q tableName key = mycall (DirtyDeleteQ tableName key)
+
 dirty_write :: TableName -> Meta -> Process ()
 dirty_write tableName val = mycall (DirtyWrite tableName val)
 
@@ -462,6 +474,7 @@ serverDefinition = defaultProcess {
         , handleCall handleDirtyAllKeys
         , handleCall handleDirtyRead
         , handleCall handleDirtyReadQ
+        , handleCall handleDirtyDeleteQ
         , handleCall handleDirtyWrite
         , handleCall handleDirtyWriteQ
         , handleCall handleTableInfo
@@ -521,6 +534,11 @@ handleDirtyReadQ :: State -> DirtyReadQ -> Process (ProcessReply State (Maybe QE
 handleDirtyReadQ s (DirtyReadQ tableName key) = do
     res <- do_dirty_read_q tableName key
     reply res s
+
+handleDirtyDeleteQ :: State -> DirtyDeleteQ -> Process (ProcessReply State ())
+handleDirtyDeleteQ s (DirtyDeleteQ tableName key) = do
+    do_dirty_delete_q tableName key
+    reply () s
 
 handleDirtyWrite :: State -> DirtyWrite -> Process (ProcessReply State ())
 handleDirtyWrite s (DirtyWrite tableName val) = do
@@ -666,6 +684,13 @@ do_dirty_read tableName keyVal = do
 do_dirty_read_q :: TableName -> QKey -> Process (Maybe QEntry)
 do_dirty_read_q tableName keyVal = do
   logm $ "unimplemented dirty_read_q:" ++ (show (tableName)) -- ,keyVal))
+  return Nothing
+
+-- ---------------------------------------------------------------------
+
+do_dirty_delete_q :: TableName -> QKey -> Process (Maybe QEntry)
+do_dirty_delete_q tableName keyVal = do
+  logm $ "unimplemented dirty_delete_q:" ++ (show (tableName,keyVal)) -- ,keyVal))
   return Nothing
 
 -- ---------------------------------------------------------------------

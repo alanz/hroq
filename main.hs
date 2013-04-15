@@ -35,8 +35,8 @@ main = do
 
   node <- startLocalNode
 
-  -- runProcess node worker
-  runProcess node worker_mnesia
+  runProcess node worker
+  -- runProcess node worker_mnesia
 
   closeLocalNode node
   
@@ -81,10 +81,10 @@ worker = do
 
   -- mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..8000]
   -- mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..2000]
-  mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..800]
+  -- mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..800]
 
   -- mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..51]
-  -- mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..11]
+  mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..11]
   logm "enqueue done b"
 
   -- mapM_ (\n -> enqueue qSida qNameA (qval $ "aaa" ++ (show n))) [1..8]
@@ -98,6 +98,9 @@ worker = do
   logm $ "mnesia state ms4:" ++ (show ms4)
 
   liftIO $ threadDelay (1*1000000) -- 1 seconds
+
+  pr <- peek qSidb qNameB
+  logm $ "peek:pr=" ++ (show pr)
 
   logm $ "blurble"
 
@@ -125,7 +128,7 @@ worker_mnesia = do
 
   let qe = QE (QK "a") (qval $ "bar2")
   let s =   (MnesiaState Map.empty Map.empty Map.empty)
-  mapM_ (\n -> dirty_write_q table (QE (QK "a") (qval $ "bar" ++ (show n)))) [1..80000]
+  mapM_ (\n -> dirty_write_q table (QE (QK "a") (qval $ "bar" ++ (show n)))) [1..800]
   -- mapM_ (\n -> dirty_write_q table qe) [1..800]
   -- mapM_ (\n -> do_dirty_write_q s table qe) [1..800]
 
