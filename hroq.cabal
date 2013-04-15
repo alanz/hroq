@@ -53,7 +53,7 @@ executable hroq
                        -- , Workflow
                        , distributed-process
                        , distributed-process-platform
-                       , distributed-process-simplelocalnet
+                       -- , distributed-process-simplelocalnet
                        , binary
                        , bytestring
                        -- , TCache
