@@ -50,13 +50,11 @@ executable hroq
   -- other-modules:       
   build-depends:       base ==4.5.*
                        , RefSerialize
-                       -- , Workflow
                        , distributed-process
                        , distributed-process-platform
-                       , distributed-process-simplelocalnet
+                       -- , distributed-process-simplelocalnet
                        , binary
                        , bytestring
-                       -- , TCache
                        , containers
                        , derive
                        , directory

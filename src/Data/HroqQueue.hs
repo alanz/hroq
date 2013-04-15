@@ -756,6 +756,7 @@ do_peek(Key, SourceBucket) ->
 do_peek :: QKey -> TableName -> Process ReadOpReply
 do_peek key sourceBucket = do
   res <- HM.dirty_read_q sourceBucket key
+  logm $ "HroqQueue.do_peek:res=" ++ (show res)
   case res of
     Just msg -> return (ReadOpReplyMsg msg)
     Nothing  -> return (ReadOpReplyError (error $ "do_peek: read (sourceBucket,key) failed for " ++ (show (sourceBucket,key)) ))

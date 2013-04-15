@@ -683,8 +683,18 @@ do_dirty_read tableName keyVal = do
 
 do_dirty_read_q :: TableName -> QKey -> Process (Maybe QEntry)
 do_dirty_read_q tableName keyVal = do
-  logm $ "unimplemented dirty_read_q:" ++ (show (tableName)) -- ,keyVal))
-  return Nothing
+  logm $ "dirty_read_q:" ++ (show (tableName)) -- ,keyVal))
+  -- TODO: check if this is in the RAM cache first
+  ems <- liftIO $ Exception.try $ decodeFileQEntry (tableNameToFileName tableName)
+  case ems of
+    Left (e::IOError) -> do
+      logm $ "do_dirty_read_q e " ++ (show keyVal) ++ ":" ++ (show e)
+      return Nothing
+    Right ms -> do
+      let ms' = filter (\(QE key _) -> key == keyVal) ms
+      logm $ "do_dirty_read_q ms' " ++ (show keyVal) ++ ":" ++ (show ms')
+      if ms' == [] then return Nothing
+                   else return $ Just (head ms')
 
 -- ---------------------------------------------------------------------
 
