@@ -52,7 +52,8 @@ executable hroq
                        , RefSerialize
                        , distributed-process
                        , distributed-process-platform
-                       -- , distributed-process-simplelocalnet
+                       , distributed-process-simplelocalnet
+                       , distributed-static
                        , binary
                        , bytestring
                        , containers

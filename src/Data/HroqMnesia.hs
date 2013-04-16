@@ -413,6 +413,9 @@ getSid = do
   Just pid <- whereis hroqMnesiaName
   return pid
 
+mycall ::
+  (Typeable b, Typeable a, Binary b, Binary a) 
+  => a -> Process b
 mycall op = do
   sid <- getSid
   call sid op

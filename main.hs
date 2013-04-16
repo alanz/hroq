@@ -1,29 +1,31 @@
+{-# LANGUAGE TemplateHaskell #-}
 {- # LANGUAGE DeriveDataTypeable  # -}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
 
+-- import Data.HroqDlqWorkers
 import Control.Concurrent
 import Control.Distributed.Process hiding (call)
+import Control.Distributed.Process.Closure
 import Control.Distributed.Process.Node 
 import Control.Distributed.Process.Platform
 import Control.Distributed.Process.Platform.ManagedProcess hiding (runProcess)
 import Control.Distributed.Process.Platform.Time
--- import Control.Workflow
+import Control.Distributed.Static (staticLabel, staticClosure)
+-- import Control.Distributed.Static
 import Data.Binary
 import Data.DeriveTH
 import Data.Hroq
 import Data.HroqLogger
 import Data.HroqMnesia
-import Data.HroqQueueMeta
 import Data.HroqQueue
+import Data.HroqQueueMeta
 import Data.Maybe
--- import Data.Persistent.Collection
 import Data.RefSerialize
--- import Data.TCache
 import Data.Typeable (Typeable)
 import Network.Transport.TCP (createTransportExposeInternals, defaultTCPParameters)
-import qualified Data.Map as Map
 import qualified Data.HroqApp as App
+import qualified Data.Map as Map
 
 -- https://github.com/tibbe/ekg
 import qualified System.Remote.Monitoring as EKG
@@ -102,6 +104,11 @@ worker = do
   pr <- peek qSidb qNameB
   logm $ "peek:pr=" ++ (show pr)
 
+  liftIO $ threadDelay (1*1000000) -- 1 seconds
+
+  -- pd <- dequeue qSidb qNameB ($(mkClosure 'purge)) Nothing
+  -- logm $ "dequeue:pd=" ++ (show pd)
+
   logm $ "blurble"
 
   -- liftIO $ threadDelay (10*60*1000000) -- Ten minutes
@@ -160,6 +167,31 @@ startLocalNode = do
 
 -- qval str = QV $ Map.fromList [(str,str)]
 qval str = QV str
+
+-- ---------------------------------------------------------------------
+
+-- purge :: WorkerFunc
+purge :: QEntry -> Process (Either String ())
+purge _entry = do
+  return (Right ())
+
+
+-- factorialOf :: Closure ( QEntry -> Process (Either String ()) )
+-- factorialOf = staticClosure $(mkStatic 'purge)
+-- factorialOf = staticClosure $(mkClosure 'purge)
+-- factorialOf = $(mkClosure 'purge)
+
+-- pp :: Closure ( QEntry -> Process (Either String ()) )
+-- pp = ($(mkStaticClosure 'purge))
+
+($(mkStatic 'purge))
+-- ($(mkStatic 'QE))
+
+-- ---------------------------------------------------------------------
+
+remotable [ 'purge
+          , 'QE
+          ]
 
 -- ---------------------------------------------------------------------
 

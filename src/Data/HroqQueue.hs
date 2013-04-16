@@ -10,6 +10,8 @@ module Data.HroqQueue
 
   , startQueue
 
+  , WorkerFunc
+
   -- * debug
   , enqueue_one_message
   )
@@ -97,9 +99,9 @@ instance Binary ReadOp where
     sel <- get
     case sel of
       'D' -> liftM3 ReadOpDequeue get get get
-      'P' -> liftM ReadOpPeek get
+      'P' -> liftM  ReadOpPeek get
 
-type WorkerFunc = QKey -> QEntry -> Process (Either String ())
+type WorkerFunc = QEntry -> Process (Either String ())
 
 type CleanupFunc = String
 
@@ -791,7 +793,7 @@ process_the_message key sourceBucket worker = do
   case res of
     Just msg -> do
       f <- unClosure worker
-      r <- f key msg
+      r <- f msg
       case r of
         Right () -> do
           HM.dirty_delete_q sourceBucket key
