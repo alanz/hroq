@@ -61,10 +61,10 @@ worker = do
   mapM_ (\n -> (call sid ("bar" ++ (show n))) :: Process ()  ) [1..800]
   -- mapM_ (\n -> ((callAsync sid ("bar" ++ (show n))) :: Process (Async ()) ) >>= wait  ) [1..800]
   liftIO $ threadDelay (1*1000000) -- 1 seconds
-  mapM_ (\n -> ((cast sid ("foo" ++ (show n))) :: Process ())  ) [1..800]
-  liftIO $ threadDelay (3*1000000) -- 3 seconds
-  mapM_ (\n -> (call sid ("baz" ++ (show n))) :: Process ()  ) [1..80]
-  liftIO $ threadDelay (3*1000000) -- 3 seconds
+  -- mapM_ (\n -> ((cast sid ("foo" ++ (show n))) :: Process ())  ) [1..800]
+  -- liftIO $ threadDelay (3*1000000) -- 3 seconds
+  -- mapM_ (\n -> (call sid ("baz" ++ (show n))) :: Process ()  ) [1..80]
+  -- liftIO $ threadDelay (3*1000000) -- 3 seconds
   
 
 {-
