@@ -72,13 +72,11 @@ startLoggerProcess node = do
 -- to the process registered as 'hroqlogger'.
 logm :: String -> Process ()
 logm string = do
-  {-
   now <- liftIO getCurrentTime
   us  <- getSelfPid
   -- let timeStr = formatTime defaultTimeLocale "%c" now
   let timeStr = show now -- Include us timing
   nsend registeredLoggerName (timeStr, us, string)
-  -}
   return ()
 
 
@@ -88,11 +86,13 @@ logm string = do
 -- to the process registered as 'hroqlogger'.
 logt :: String -> Process ()
 logt string = do
+  {-
   now <- liftIO getCurrentTime
   us  <- getSelfPid
   -- let timeStr = formatTime defaultTimeLocale "%c" now
   let timeStr = show now -- Include us timing
   nsend registeredLoggerName (timeStr, us, string)
+  -}
   return ()
 
 

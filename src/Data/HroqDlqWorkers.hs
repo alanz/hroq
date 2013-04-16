@@ -31,9 +31,10 @@ import qualified Data.Map as Map
 
 -- ---------------------------------------------------------------------
 
--- QKey -> QEntry -> Process (Either String ())
-requeue :: WorkerFunc
-requeue entry = do
+
+requeuer :: QName -> WorkerFunc
+requeuer destQ entry = do
+  logm $ "purger:" ++ (show (destQ,entry))
   return (Right ())
 
 {-
@@ -45,57 +46,30 @@ requeue(Key, #eroq_dlq_message {data = OrigMsg}, DestQueue)->
 -}
 -- ---------------------------------------------------------------------
 
--- purge :: WorkerFunc
-purge :: QEntry -> Process (Either String ())
-purge _entry = do
+-- Note: the first parameter represents the environement, which is
+-- serialised and remoted together with the function when is is turned
+-- into a Closure
+purger :: Int -> QEntry -> Process (Either String ())
+purger _ entry = do
+  logm $ "purger:" ++ (show entry)
   return (Right ())
-
-{-
-purge(_, _, _)->
-    ok.
--}
-
-pp :: QKey -> Process Bool
-pp k = do return False
 
 
 -- ---------------------------------------------------------------------
 
-isPrime :: Integer -> Process Bool
-isPrime n = return . (n `elem`) . takeWhile (<= n) . sieve $ [2..]
-   where
-     sieve :: [Integer] -> [Integer]
-     sieve (p : xs) = p : sieve [x | x <- xs, x `mod` p > 0]
-
-remotable ['isPrime
-          , 'purge
-          , 'pp
+remotable [ 'requeuer
+          , 'purger
           ]
 
 
 
-ap :: QEntry -> Closure (Process (Either String ()))
-ap qe = ( $(mkClosure 'purge) qe)
+requeue :: QName -> Closure (QEntry -> Process (Either String ()))
+requeue qe = ( $(mkClosure 'requeuer) qe)
 
-dp :: Closure (Process (Either String ()))
-dp = ($(mkClosure 'purge) (QE (QK "a") (QV "b") ) )
+purge :: Int -> Closure (QEntry -> Process (Either String ()))
+purge qe = ( $(mkClosure 'purger) qe)
 
 
-ff = ($(mkClosure 'isPrime) (79 :: Integer))
--- gg = ($(mkClosure 'purge))
-
-hh :: Closure (Process Bool)
-hh = ($(mkClosure 'pp) (QK "cc"))
-
-ii :: QKey -> Closure (Process Bool)
-ii = ($(mkClosure 'pp))
-
-master :: [NodeId] -> Process ()
-master [] = liftIO $ putStrLn "no slaves"
-master (slave:_) = do
-   -- isPrime79 <- call $(functionTDict 'isPrime) slave ($(mkClosure 'isPrime) (79 :: Integer))
-   -- liftIO $ print isPrime79
-   liftIO $ print "foo"
 
 {-
 main :: IO ()

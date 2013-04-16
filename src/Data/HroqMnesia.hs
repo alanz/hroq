@@ -13,6 +13,7 @@ module Data.HroqMnesia
   , change_table_copy_type
   , dirty_write
   , dirty_write_q
+  , dirty_write_q_sid
   , dirty_read
   , dirty_read_q
   , dirty_delete_q
@@ -28,10 +29,11 @@ module Data.HroqMnesia
 
 
   , startHroqMnesia
+  , getSid
 
   -- * debug
   , queueExists
-  , get_state
+  , log_state
 
   , State (..)
   , do_dirty_write_q
@@ -46,7 +48,7 @@ import Control.Distributed.Process.Platform.Async
 import Control.Distributed.Process.Platform.ManagedProcess hiding (runProcess)
 import Control.Distributed.Process.Platform.Time
 import Control.Exception as Exception
-import Control.Monad(when,replicateM,foldM,liftM3,liftM2,liftM)
+import Control.Monad(when,replicateM,foldM,liftM4,liftM3,liftM2,liftM)
 import Data.Binary
 import Data.Binary.Get
 import Data.DeriveTH
@@ -67,6 +69,8 @@ import System.IO.Unsafe
 import qualified Data.ByteString.Lazy.Char8 as B
 import qualified Data.Map as Map
 import qualified Data.ByteString.Lazy as L
+
+import qualified System.Remote.Monitoring as EKG
 
 -- ---------------------------------------------------------------------
 
@@ -140,8 +144,8 @@ data TableInfo = TableInfo !TableName !TableInfoReq
 data WaitForTables = WaitForTables ![TableName] !Delay
                    deriving (Typeable, Show)
 
--- , get_state
-data GetState = GetState
+-- , log_state
+data LogState = LogState
                 deriving (Typeable,Show)
 
 -- ---------------------------------------------------------------------
@@ -208,12 +212,12 @@ instance Binary WaitForTables where
   put (WaitForTables tables delay) = put tables >> put delay
   get = liftM2 WaitForTables get get
 
-instance Binary GetState where
-  put GetState = putWord8 1
+instance Binary LogState where
+  put LogState = putWord8 1
   get = do
           v <- getWord8
           case v of
-            1 -> return GetState
+            1 -> return LogState
 
 -- ---------------------------------------------------------------------
 
@@ -247,16 +251,21 @@ data State = MnesiaState
   { sTableInfo :: !(Map.Map TableName TableMeta)
   , sRamQ      :: !(Map.Map TableName [QEntry])
   , sRamMeta   :: !(Map.Map TableName [Meta])
+  , sEkg       :: !EKG.Server
   } deriving (Show,Typeable)
+
+instance Show EKG.Server where
+  show _ = "EKG.Server"
 
 instance Binary TableMeta where
   put (TableMeta size storage typ) = put size >> put storage >> put typ
   get = liftM3 TableMeta get get get
 
+{-
 instance Binary State where
-  put (MnesiaState ti rq rm) = put ti >> put rq >> put rm
-  get = liftM3 MnesiaState get get get
-
+  put (MnesiaState ti rq rm ekg) = put ti >> put rq >> put rm >> put ekg
+  get = liftM4 MnesiaState get get get get
+-}
 -- ---------------------------------------------------------------------
 
 getMetaForTable :: State -> TableName -> Maybe (TableMeta)
@@ -371,17 +380,21 @@ dirty_write_q tablename val = do
   logt $ "dirty_write_q done"
   return res
 
+dirty_write_q_sid :: ProcessId -> TableName -> QEntry -> Process ()
+dirty_write_q_sid sid tablename val = call sid (DirtyWriteQ tablename val)
+
+
 table_info :: TableName -> TableInfoReq -> Process TableInfoRsp
 table_info tableName req = mycall (TableInfo tableName req)
 
 wait_for_tables :: [TableName] -> Delay -> Process ()
 wait_for_tables tables delay = mycall (WaitForTables tables delay)
 
-get_state :: Process State
-get_state = mycall (GetState)
+log_state :: Process ()
+log_state = mycall (LogState)
 
 -- | Start a Queue server
-startHroqMnesia :: a -> Process ProcessId
+startHroqMnesia :: EKG.Server -> Process ProcessId
 startHroqMnesia initParams = do
   let server = serverDefinition
   sid <- spawnLocal $ start initParams initFunc server >> return ()
@@ -389,9 +402,9 @@ startHroqMnesia initParams = do
   return sid
 
 -- init callback
-initFunc :: InitHandler a State
-initFunc _ = do
-  let s = (MnesiaState Map.empty Map.empty Map.empty)
+initFunc :: InitHandler EKG.Server State
+initFunc ekg = do
+  let s = (MnesiaState Map.empty Map.empty Map.empty ekg)
   ems <- liftIO $ Exception.try $ decodeFileSchema (tableNameToFileName schemaTable)
   logm $ "initFunc:ems=" ++ (show ems)
   let m = case ems of
@@ -488,7 +501,7 @@ serverDefinition = defaultProcess {
         , handleCall handleWaitForTables
 
         -- * Debug routines
-        , handleCall handleGetState
+        , handleCall handleLogState
         ]
     , infoHandlers =
         [
@@ -594,8 +607,10 @@ handleWaitForTables s (WaitForTables tables delay) = do
     logt $ "handleWaitForTables done"
     reply () s'
 
-handleGetState :: State -> GetState -> Process (ProcessReply State State)
-handleGetState s _ = reply s s
+handleLogState :: State -> LogState -> Process (ProcessReply State ())
+handleLogState s _ = do
+  logm $ "HroqMnesia:current state:" ++ (show s)
+  reply () s
 
 -- ---------------------------------------------------------------------
 
@@ -816,7 +831,6 @@ decodeFileQEntry = decodeFileBinaryList
 
 decodeFileBinaryList :: (Binary a) => FilePath -> IO [a]
 decodeFileBinaryList filename = do
-  -- runGetState :: Get a -> ByteString -> Int64 -> (a, ByteString, Int64)
   s <- L.readFile filename
   go [] s 0
   where

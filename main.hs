@@ -16,6 +16,7 @@ import Control.Distributed.Static (staticLabel, staticClosure)
 import Data.Binary
 import Data.DeriveTH
 import Data.Hroq
+import Data.HroqDlqWorkers
 import Data.HroqLogger
 import Data.HroqMnesia
 import Data.HroqQueue
@@ -33,11 +34,11 @@ import qualified System.Remote.Monitoring as EKG
 -- ---------------------------------------------------------------------
 
 main = do
-  -- EKG.forkServer "localhost" 8000
+  ekg <- EKG.forkServer "localhost" 8000
 
   node <- startLocalNode
 
-  runProcess node worker
+  runProcess node (worker ekg)
   -- runProcess node worker_mnesia
 
   closeLocalNode node
@@ -46,19 +47,19 @@ main = do
 
 -- ---------------------------------------------------------------------
 
-worker :: Process ()
-worker = do
-  mnesiaSid <- startHroqMnesia ()
+worker :: EKG.Server -> Process ()
+worker ekg = do
+  mnesiaSid <- startHroqMnesia ekg
   logm "mnesia started"
 
-  ms1 <- get_state
-  logm $ "mnesia state ms1:" ++ (show ms1)
+  logm $ "mnesia state ms1:"
+  log_state
 
   App.start_app
   logm "app started"
 
-  ms2 <- get_state
-  logm $ "mnesia state ms2:" ++ (show ms2)
+  logm $ "mnesia state ms2:"
+  log_state
 
   let qNameA = QN "queue_a"
   let qNameB = QN "queue_b"
@@ -67,11 +68,11 @@ worker = do
   -- logm $ "queue started:" ++ (show qSida)
 
 
-  qSidb <- startQueue (qNameB,"appinfo","blah")
+  qSidb <- startQueue (qNameB,"appinfo","blah",ekg)
   logm $ "queue started:" ++ (show qSidb)
 
-  ms3 <- get_state
-  logm $ "mnesia state ms3:" ++ (show ms3)
+  logm $ "mnesia state ms3:" 
+  log_state
 
   -- liftIO $ threadDelay (10*1000000) -- 10 seconds
 
@@ -83,12 +84,12 @@ worker = do
 
   -- mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..80000]
   -- mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..8000]
-  mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..2000]
+  -- mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..2000]
   -- mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..800]
   -- mapM_ (\n -> enqueueCast qSidb qNameB (qval $ "bar" ++ (show n))) [1..800]
 
   -- mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..51]
-  -- mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..11]
+  mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..11]
 
   logm "enqueue done b"
 
@@ -99,18 +100,18 @@ worker = do
 
   -- liftIO $ threadDelay (3*1000000) -- 3 seconds
 
-  ms4 <- get_state
-  logm $ "mnesia state ms4:" ++ (show ms4)
+  logm $ "mnesia state ms4:"
+  log_state
 
   liftIO $ threadDelay (1*1000000) -- 1 seconds
 
-  -- pr <- peek qSidb qNameB
-  -- logm $ "peek:pr=" ++ (show pr)
+  pr <- peek qSidb qNameB
+  logm $ "peek:pr=" ++ (show pr)
 
   liftIO $ threadDelay (1*1000000) -- 1 seconds
 
-  -- pd <- dequeue qSidb qNameB ($(mkClosure 'purge)) Nothing
-  -- logm $ "dequeue:pd=" ++ (show pd)
+  pd <- dequeue qSidb qNameB (purge 0) Nothing
+  logm $ "dequeue:pd=" ++ (show pd)
 
   logm $ "blurble"
 
@@ -119,12 +120,12 @@ worker = do
 
 -- ---------------------------------------------------------------------
 
-worker_mnesia :: Process ()
-worker_mnesia = do
-  mnesiaSid <- startHroqMnesia ()
+worker_mnesia :: EKG.Server -> Process ()
+worker_mnesia ekg = do
+  mnesiaSid <- startHroqMnesia ekg
   logm "mnesia started"
 
-  -- ms1 <- get_state
+  -- ms1 <- log_state
   -- logm $ "mnesia state ms1:" ++ (show ms1)
 
   let table = TN "mnesiattest"
@@ -133,7 +134,7 @@ worker_mnesia = do
 
   wait_for_tables [table] Infinity
 
-  -- ms2 <- get_state
+  -- ms2 <- log_state
   -- logm $ "mnesia state ms2:" ++ (show ms2)
 
   let qe = QE (QK "a") (qval $ "bar2")
@@ -143,7 +144,7 @@ worker_mnesia = do
   -- mapM_ (\n -> do_dirty_write_q s table qe) [1..800]
 
 
-  -- ms4 <- get_state
+  -- ms4 <- log_state
   -- logm $ "mnesia state ms4:" ++ (show ms4)
 
   liftIO $ threadDelay (1*1000000) -- 1 seconds
@@ -172,31 +173,3 @@ startLocalNode = do
 qval str = QV str
 
 -- ---------------------------------------------------------------------
-{-
--- purge :: WorkerFunc
-purge :: QEntry -> Process (Either String ())
-purge _entry = do
-  return (Right ())
-
-
--- factorialOf :: Closure ( QEntry -> Process (Either String ()) )
--- factorialOf = staticClosure $(mkStatic 'purge)
--- factorialOf = staticClosure $(mkClosure 'purge)
--- factorialOf = $(mkClosure 'purge)
-
--- pp :: Closure ( QEntry -> Process (Either String ()) )
--- pp = ($(mkStaticClosure 'purge))
-
-($(mkStatic 'purge))
--- ($(mkStatic 'QE))
-
--- ---------------------------------------------------------------------
-
-remotable [ 'purge
-          , 'QE
-          ]
-
--- ---------------------------------------------------------------------
-
--}
-

@@ -42,6 +42,7 @@ import qualified Data.HroqMnesia as HM
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 
+import qualified System.Remote.Monitoring as EKG
 
 --------------------------------------------------------------------------------
 -- Types                                                                      --
@@ -118,6 +119,8 @@ data State = QueueState
    , qsDoCleanup          :: CleanupFunc -- Should be a function eventually?
    , qsIndexList          :: ![QKey]
    , qsSubscriberPidDict  :: !(Set.Set ProcessId)
+   , qsMnesiaSid          :: !ProcessId
+   , qsEkg                :: !EKG.Server
    }
 
 {-
@@ -172,13 +175,6 @@ enqueue sid q v = call sid (Enqueue q v)
 enqueueCast :: ProcessId -> QName -> QValue -> Process ()
 enqueueCast sid q v = cast sid (Enqueue q v)
 
-
--- dequeue(QueueName, WorkerModule, WorkerFunc, WorkerParams)  when is_atom(QueueName)->
---     dequeue(QueueName, WorkerModule, WorkerFunc, WorkerParams, undefined).
-
--- dequeue(QueueName, WorkerModule, WorkerFunc, WorkerParams, SubscribeIfEmptyPid)  when is_atom(QueueName) and (is_pid(SubscribeIfEmptyPid) or (SubscribeIfEmptyPid == undefined)) ->
---     gen_server:call(?NAME(QueueName), {read, {dequeue, WorkerModule, WorkerFunc, WorkerParams, SubscribeIfEmptyPid}}, infinity).
-
 dequeue :: ProcessId -> QName -> Closure QWorker -> Maybe ProcessId -> Process ReadOpReply
 dequeue sid q w mp = call sid (ReadOpDequeue q w mp)
 
@@ -189,7 +185,7 @@ peek sid q = call sid (ReadOpPeek q)
 -- TODO: erlang version starts a Q gen server per Q, uses the QName to
 -- lookup in the global process dict where it is.
 -- | Start a Queue server
-startQueue :: (QName,String,CleanupFunc) -> Process ProcessId
+startQueue :: (QName,String,CleanupFunc,EKG.Server) -> Process ProcessId
 startQueue initParams =
   let server = serverDefinition
   in spawnLocal $ start initParams initFunc server >> return ()
@@ -197,19 +193,17 @@ startQueue initParams =
 -- -----------------------------------------------------------------------------
 
 -- |Init callback
-initFunc :: InitHandler (QName,String,CleanupFunc) State
-initFunc (queueName,appInfo,doCleanup) = do
+initFunc :: InitHandler (QName,String,CleanupFunc,EKG.Server) State
+initFunc (queueName,appInfo,doCleanup,ekg) = do
 
     logm $ "HroqQueue:initFunc started"
 
     -- process_flag(trap_exit, true),
 
-    -- ok = mnesia:wait_for_tables([eroq_queue_meta_table], infinity),
     HM.wait_for_tables [hroq_queue_meta_table] Infinity
     logm $ "HroqQueue:initFunc 1"
 
     -- Run through the control table & delete all empty buckets ...
-    -- {QueueSize, Buckets} = check_buckets(QueueName),
     (queueSize,buckets) <- check_buckets queueName
     logm $ "HroqQueue:initFunc 2:(queueSize,buckets)=" ++ (show (queueSize,buckets))
 
@@ -217,21 +211,10 @@ initFunc (queueName,appInfo,doCleanup) = do
     HM.wait_for_tables buckets Infinity
     logm $ "HroqQueue:initFunc 3"
 
-    -- [CurrProcBucket | _] = Buckets,
-    -- CurrOverflowBucket   = lists:last(Buckets),
     let currProcBucket     = head buckets
         currOverflowBucket = last buckets
         -- NOTE: these two buckets may be the same
 
-{-
-    case CurrProcBucket of
-    CurrOverflowBucket ->
-        ok = change_table_copy_type(CurrProcBucket, disc_copies);
-    _ ->
-        ok = change_table_copy_type(CurrProcBucket,     disc_copies),
-        ok = change_table_copy_type(CurrOverflowBucket, disc_copies)
-    end,
--}
     if currProcBucket == currOverflowBucket
       then do
         HM.change_table_copy_type currProcBucket HM.DiscCopies
@@ -244,21 +227,7 @@ initFunc (queueName,appInfo,doCleanup) = do
     allKeys <- HM.dirty_all_keys currProcBucket
     logm $ "HroqQueue:initFunc 5"
 
-{-
-    ServerState =#eroq_queue_state  {  
-                                    app_info             = AppInfo,
-                                    curr_proc_bucket     = CurrProcBucket, 
-                                    curr_overflow_bucket = CurrOverflowBucket, 
-                                    total_queue_size     = QueueSize,
-                                    enqueue_count        = 0,
-                                    dequeue_count        = 0,
-                                    max_bucket_size      = ?MAX_BUCKET_SIZE,
-                                    queue_name           = QueueName,
-                                    do_cleanup           = DoCleanup,
-                                    index_list           = lists:sort(mnesia:dirty_all_keys(CurrProcBucket)),
-                                    subscriber_pid_dict  = dict:new()
-                                    },
--}
+    mnesiaSid <- HM.getSid
     let s = QueueState
              { qsAppInfo            = appInfo
              , qsCurrProcBucket     = currProcBucket
@@ -271,6 +240,8 @@ initFunc (queueName,appInfo,doCleanup) = do
              , qsDoCleanup          = doCleanup
              , qsIndexList          = sort allKeys
              , qsSubscriberPidDict  = Set.empty
+             , qsMnesiaSid          = mnesiaSid
+             , qsEkg                = ekg
              }
 
 
@@ -466,7 +437,8 @@ enqueue_one_message queueName v s = do
 
   logt $ "enqueue_one_message 2"
 
-  HM.dirty_write_q enqueueWorkBucket msgRecord
+  -- HM.dirty_write_q enqueueWorkBucket msgRecord
+  HM.dirty_write_q_sid (qsMnesiaSid s)  enqueueWorkBucket msgRecord
   let newTotalQueuedMsg = (qsTotalQueueSize s) + 1
       newEnqueueCount   = (qsEnqueueCount s)   + 1
   -- logm $ "enqueue_one_message:write done"
@@ -732,20 +704,23 @@ process_the_message(Key, SourceBucket, WorkerModule, WorkerFunc, WorkerParams) -
 
 process_the_message :: QKey -> TableName -> Closure WorkerFunc -> Process (Either String ())
 process_the_message key sourceBucket worker = do
-  logm $ "process_the_message undefined:(key,sourceBucket)=" ++ (show (key,sourceBucket))
+  logm $ "process_the_message:(key,sourceBucket)=" ++ (show (key,sourceBucket))
 
   res <- HM.dirty_read_q sourceBucket key
+  logm $ "process_the_message:res=" ++ (show res)
   case res of
     Just msg -> do
+      logm $ "process_the_message: about to process.."
       f <- unClosure worker
       r <- f msg
+      logm $ "process_the_message:r=" ++ (show r)
       case r of
         Right () -> do
           HM.dirty_delete_q sourceBucket key
           return $ Right ()
         Left err -> return (Left err)
     Nothing  -> do
-      return (Left "process_the_message:not implemented")
+      return (Left "process_the_message:res==Nothing")
 
 
 -- ---------------------------------------------------------------------
