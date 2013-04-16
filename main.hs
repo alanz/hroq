@@ -81,12 +81,15 @@ worker = do
   -- enqueue qSida qNameA (qval "foo2")
   -- logm "enqueue done a"
 
+  -- mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..80000]
   -- mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..8000]
-  -- mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..2000]
+  mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..2000]
   -- mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..800]
+  -- mapM_ (\n -> enqueueCast qSidb qNameB (qval $ "bar" ++ (show n))) [1..800]
 
   -- mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..51]
-  mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..11]
+  -- mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..11]
+
   logm "enqueue done b"
 
   -- mapM_ (\n -> enqueue qSida qNameA (qval $ "aaa" ++ (show n))) [1..8]
@@ -101,8 +104,8 @@ worker = do
 
   liftIO $ threadDelay (1*1000000) -- 1 seconds
 
-  pr <- peek qSidb qNameB
-  logm $ "peek:pr=" ++ (show pr)
+  -- pr <- peek qSidb qNameB
+  -- logm $ "peek:pr=" ++ (show pr)
 
   liftIO $ threadDelay (1*1000000) -- 1 seconds
 
@@ -169,7 +172,7 @@ startLocalNode = do
 qval str = QV str
 
 -- ---------------------------------------------------------------------
-
+{-
 -- purge :: WorkerFunc
 purge :: QEntry -> Process (Either String ())
 purge _entry = do
@@ -194,4 +197,6 @@ remotable [ 'purge
           ]
 
 -- ---------------------------------------------------------------------
+
+-}
 

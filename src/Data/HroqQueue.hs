@@ -5,6 +5,7 @@
 module Data.HroqQueue
   (
     enqueue
+  , enqueueCast
   , dequeue
   , peek
 
@@ -167,6 +168,10 @@ data State = QueueState
 -- |Add an item to a queue
 enqueue :: ProcessId -> QName -> QValue -> Process ()
 enqueue sid q v = call sid (Enqueue q v)
+
+enqueueCast :: ProcessId -> QName -> QValue -> Process ()
+enqueueCast sid q v = cast sid (Enqueue q v)
+
 
 -- dequeue(QueueName, WorkerModule, WorkerFunc, WorkerParams)  when is_atom(QueueName)->
 --     dequeue(QueueName, WorkerModule, WorkerFunc, WorkerParams, undefined).
@@ -379,6 +384,8 @@ serverDefinition = defaultProcess {
      apiHandlers = [
           handleCall handleEnqueue
         , handleCall handleReadOp
+
+        , handleCast handleEnqueueCast
         ]
     , infoHandlers =
         [
@@ -393,8 +400,18 @@ serverDefinition = defaultProcess {
 handleEnqueue :: State -> Enqueue -> Process (ProcessReply State ())
 handleEnqueue s (Enqueue q v) = do
     -- logm $ "enqueue called with:" ++ (show (q,v))
+    logt $ "handleEnqueue starting"
     s' <- enqueue_one_message q v s
+    logt $ "handleEnqueue done"
     reply () s'
+
+handleEnqueueCast :: State -> Enqueue -> Process (ProcessAction State)
+handleEnqueueCast s (Enqueue q v) = do
+    -- logm $ "enqueue called with:" ++ (show (q,v))
+    logt $ "handleEnqueueCast starting"
+    s' <- enqueue_one_message q v s
+    logt $ "handleEnqueueCast done"
+    continue s'
 
 {-
 handle_call({enqueue, QueueName, Message}, _From, ServerState) when is_record(Message, eroq_message)->
@@ -411,7 +428,9 @@ handle_call({enqueue, QueueName, Message}, From, ServerState)->
 handleReadOp :: State -> ReadOp -> Process (ProcessReply State ReadOpReply)
 handleReadOp s readOp = do
     -- {(logm "dequeuing") ; reply () (s) }
+    logt $ "handleReadOp starting"
     (res,s') <- do_read_op readOp s
+    logt $ "handleReadOp done"
     reply res s'
 
 
@@ -424,106 +443,37 @@ enqueue_one_message queueName v s = do
   -- logm $ "enqueue_one_message:key=" ++ (show key)
   let msgRecord = QE key v
 
-{-
-    AppInfo        = ServerState#eroq_queue_state.app_info,
-    ProcBucket     = ServerState#eroq_queue_state.curr_proc_bucket,
-    OverflowBucket = ServerState#eroq_queue_state.curr_overflow_bucket,
-    MaxBucketSize  = ServerState#eroq_queue_state.max_bucket_size,
-    IndexList      = ServerState#eroq_queue_state.index_list,
--}
   let appInfo        = qsAppInfo            s
       procBucket     = qsCurrProcBucket     s
       overflowBucket = qsCurrOverflowBucket s
       maxBucketSize  = qsMaxBucketSize      s
       indexList      = qsIndexList          s
-
-
-{-
-    DequeueCount   = ServerState#eroq_queue_state.dequeue_count,
-
-    BucketSize = mnesia:table_info(OverflowBucket, size),
--}
-      dequeueCount = qsDequeueCount s
+      dequeueCount   = qsDequeueCount       s
 
   -- logm $ "enqueue_one_message:(procBucket,overflowBucket)=" ++ (show (procBucket,overflowBucket))
 
   HM.TISize bucketSize <- HM.table_info overflowBucket HM.TableInfoSize
   logm $ "enqueue_one_message:bucketSize=" ++ (show bucketSize)
 
-{-
-    EnqueueWorkBucket =
-    if BucketSize >= MaxBucketSize ->
-        %io:format("DEBUG: enq - create new bucket size(~p) = ~w ~n", [OverflowBucket, BucketSize]),
-        make_next_bucket(QueueName);
-    true ->
-        OverflowBucket
-    end,
--}
+  logt $ "enqueue_one_message 1"
+
   enqueueWorkBucket <- if (bucketSize >= maxBucketSize)
     then do
       logm $ "DEBUG: enq - create new bucket size(" ++ (show overflowBucket) ++ ")=" ++ (show bucketSize)
       make_next_bucket queueName
     else do
-      -- logm $ "enqueue_one_message:using existing bucket:" ++ (show (bucketSize,maxBucketSize))
       return overflowBucket
-  -- logm $ "enqueue_one_message:enqueueWorkBucket=" ++ (show enqueueWorkBucket)
 
-{-
-    ok = eroq_util:retry_dirty_write(10, EnqueueWorkBucket, MsgRecord),
+  logt $ "enqueue_one_message 2"
 
-    NewTotalQueuedMsg = ServerState#eroq_queue_state.total_queue_size+1,
-    NewEnqueueCount   = ServerState#eroq_queue_state.enqueue_count+1,
-
-    ok = eroq_log_dumper:dirty(EnqueueWorkBucket),
--}
-  -- retry_dirty_write (10::Integer) enqueueWorkBucket msgRecord
   HM.dirty_write_q enqueueWorkBucket msgRecord
   let newTotalQueuedMsg = (qsTotalQueueSize s) + 1
       newEnqueueCount   = (qsEnqueueCount s)   + 1
   -- logm $ "enqueue_one_message:write done"
-
 {-
-    NewServerState =
-    if (EnqueueWorkBucket == ProcBucket) ->
-
-        %Inserted into processing bucket (head of queue) add key to index list....
-        ServerState#eroq_queue_state   {
-                                       total_queue_size     = NewTotalQueuedMsg,
-                                       enqueue_count        = NewEnqueueCount,
-                                       index_list           = lists:append(IndexList, [MsgRecord#eroq_message.id])
-                                       };
-
-    (EnqueueWorkBucket == OverflowBucket) ->
-
-        %Inserted into overflow bucket (tail of the queue)...
-
-        ServerState#eroq_queue_state    {
-                                        total_queue_size     = NewTotalQueuedMsg,
-                                        enqueue_count        = NewEnqueueCount
-                                        };
-
-
-    true ->
-
-        %A new overflow bucket (new tail of queue) was created ....
-
-        if (ProcBucket =/= OverflowBucket) ->
-            %But only swap the previous overflow bucket (previous tail) out of ram if it is not the head of the queue ....
-            ok = change_table_copy_type(OverflowBucket, disc_only_copies);
-
-        true ->
-            ok
-
-        end,
-
-        ServerState#eroq_queue_state    {
-                                        curr_overflow_bucket = EnqueueWorkBucket,
-                                        total_queue_size     = NewTotalQueuedMsg,
-                                        enqueue_count        = NewEnqueueCount
-                                        }
-
-    end,
+    ok = eroq_log_dumper:dirty(EnqueueWorkBucket),
 -}
+
   s' <- if enqueueWorkBucket == procBucket
           then do
              -- Inserted into processing bucket (head of queue) add key to index list....
@@ -561,11 +511,6 @@ enqueue_one_message queueName v s = do
                             , qsEnqueueCount       = newEnqueueCount
                             }
 
-{-
-    catch(eroq_stats_gatherer:publish_queue_stats(QueueName, {AppInfo, NewTotalQueuedMsg, NewEnqueueCount, DequeueCount})),
-
-    {ok, NewServerState}.
--}
   publish_queue_stats queueName (appInfo,newTotalQueuedMsg,newEnqueueCount,dequeueCount)
 
   return s'

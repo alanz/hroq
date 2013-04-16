@@ -309,8 +309,8 @@ updateTableInfoQ s tableName _storage vals = s'
     rq' = case storage of
             DiscOnlyCopies -> (sRamQ s)
             _ ->  Map.insert tableName vals (sRamQ s)
-    -- s' = s { sTableInfo = ti', sRamQ = rq' }
-    s' = s { sTableInfo = ti', sRamQ = strictify rq' }
+    s' = s { sTableInfo = ti', sRamQ = rq' }
+    -- s' = s { sTableInfo = ti', sRamQ = strictify rq' }
 
 insertEntryQ :: State -> TableName -> QEntry -> State
 insertEntryQ s tableName val = s'
@@ -326,8 +326,7 @@ insertEntryQ s tableName val = s'
             _ ->  if Map.member tableName (sRamQ s)
                    then Map.insert tableName (((sRamQ s) Map.! tableName) ++ [val]) (sRamQ s)
                    else Map.insert tableName (                               [val]) (sRamQ s)
-    -- s' = s {sTableInfo = ti', sRamQ = rq'}
-    s' = s {sTableInfo = ti', sRamQ = strictify rq'}
+    s' = s {sTableInfo = ti', sRamQ = rq'}
 
 
 --------------------------------------------------------------------------------
@@ -365,7 +364,12 @@ dirty_write :: TableName -> Meta -> Process ()
 dirty_write tableName val = mycall (DirtyWrite tableName val)
 
 dirty_write_q :: TableName -> QEntry -> Process ()
-dirty_write_q tablename val = mycall (DirtyWriteQ tablename val)
+-- dirty_write_q tablename val = mycall (DirtyWriteQ tablename val)
+dirty_write_q tablename val = do
+  logt $ "dirty_write_q starting"
+  res <- mycall (DirtyWriteQ tablename val)
+  logt $ "dirty_write_q done"
+  return res
 
 table_info :: TableName -> TableInfoReq -> Process TableInfoRsp
 table_info tableName req = mycall (TableInfo tableName req)
@@ -500,68 +504,94 @@ serverDefinition = defaultProcess {
 
 handleChangeTableCopyType :: State -> ChangeTableCopyType -> Process (ProcessReply State ())
 handleChangeTableCopyType s (ChangeTableCopyType tableName storage) = do
+    logt $ "handleChangeTableCopyType starting"
     s' <- do_change_table_copy_type s tableName storage
+    logt $ "handleChangeTableCopyType done"
     reply () s'
 
 handleCreateTable :: State -> CreateTable -> Process (ProcessReply State ())
 handleCreateTable s (CreateTable storage tableName recordType) = do
+    logt $ "handleCreateTable starting"
     s' <- do_create_table s storage tableName recordType
+    logt $ "handleCreateTable done"
     reply () s'
 
 handleDeleteTable :: State -> DeleteTable -> Process (ProcessReply State ())
 handleDeleteTable s (DeleteTable tableName) = do
+    logt $ "handleDeleteTable starting"
     s' <- do_delete_table s tableName
+    logt $ "handleDeleteTable done"
     reply () s'
 
 handleCreateSchema :: State -> CreateSchema -> Process (ProcessReply State ())
 handleCreateSchema s (CreateSchema) = do
+    logt $ "handleCreateSchema starting"
     s' <- do_create_schema s
+    logt $ "handleCreateSchema done"
     reply () s'
 
 handleDeleteSchema :: State -> DeleteSchema -> Process (ProcessReply State ())
 handleDeleteSchema s _ = do
+    logt $ "handleDeleteSchema starting"
     s' <- do_delete_schema s
+    logt $ "handleDeleteSchema done"
     reply () s'
 
 handleDirtyAllKeys :: State -> DirtyAllKeys -> Process (ProcessReply State [QKey])
 handleDirtyAllKeys s (DirtyAllKeys tableName) = do
+    logt $ "handleDirtyAllKeys starting"
     res <- do_dirty_all_keys tableName
+    logt $ "handleDirtyAllKeys done"
     reply res s
 
 handleDirtyRead :: State -> DirtyRead -> Process (ProcessReply State (Maybe Meta))
 handleDirtyRead s (DirtyRead tableName key) = do
+    logt $ "handleDirtyRead starting"
     res <- do_dirty_read tableName key
+    logt $ "handleDirtyRead done"
     reply res s
 
 handleDirtyReadQ :: State -> DirtyReadQ -> Process (ProcessReply State (Maybe QEntry))
 handleDirtyReadQ s (DirtyReadQ tableName key) = do
+    logt $ "handleDirtyReadQ starting"
     res <- do_dirty_read_q tableName key
+    logt $ "handleDirtyReadQ done"
     reply res s
 
 handleDirtyDeleteQ :: State -> DirtyDeleteQ -> Process (ProcessReply State ())
 handleDirtyDeleteQ s (DirtyDeleteQ tableName key) = do
+    logt $ "handleDirtyDeleteQ starting"
     do_dirty_delete_q tableName key
+    logt $ "handleDirtyDeleteQ done"
     reply () s
 
 handleDirtyWrite :: State -> DirtyWrite -> Process (ProcessReply State ())
 handleDirtyWrite s (DirtyWrite tableName val) = do
+    logt $ "handleDirtyWrite starting"
     s' <- do_dirty_write s tableName val
+    logt $ "handleDirtyWrite done"
     reply () s'
 
 handleDirtyWriteQ :: State -> DirtyWriteQ -> Process (ProcessReply State ())
 handleDirtyWriteQ s (DirtyWriteQ tableName val) = do
+    logt $ "handleDirtyWriteQ starting"
     s' <- do_dirty_write_q s tableName val
+    logt $ "handleDirtyWriteQ done"
     reply () s'
 
 
 handleTableInfo :: State -> TableInfo -> Process (ProcessReply State TableInfoRsp)
 handleTableInfo s (TableInfo tableName req) = do
+    logt $ "handleTableInfo starting"
     (s',res) <- do_table_info s tableName req
+    logt $ "handleTableInfo done"
     reply res s'
 
 handleWaitForTables :: State -> WaitForTables -> Process (ProcessReply State ())
 handleWaitForTables s (WaitForTables tables delay) = do
+    logt $ "handleWaitForTables starting"
     s' <- do_wait_for_tables s tables delay
+    logt $ "handleWaitForTables done"
     reply () s'
 
 handleGetState :: State -> GetState -> Process (ProcessReply State State)
@@ -576,8 +606,8 @@ do_change_table_copy_type s bucket DiscOnlyCopies = do
   logm $ "change_table_copy_type:(st,rt)=" ++ (show (st,rt))
   let s' = case rt of
             RecordTypeMeta       -> s {sRamMeta = Map.delete bucket (sRamMeta s)}
-            -- RecordTypeQueueEntry -> s {sRamQ    = Map.delete bucket (sRamQ s)}
-            RecordTypeQueueEntry -> s {sRamQ    = strictify $ Map.delete bucket (sRamQ s)}
+            RecordTypeQueueEntry -> s {sRamQ    = Map.delete bucket (sRamQ s)}
+            -- RecordTypeQueueEntry -> s {sRamQ    = strictify $ Map.delete bucket (sRamQ s)}
             _                    -> s
   -- logm $ "change_table_copy_type:s'=" ++ (show s')
 
@@ -661,6 +691,8 @@ do_dirty_write_q ::
    State -> TableName -> QEntry -> Process State
 do_dirty_write_q s tableName record = do
   logm $ "dirty_write:" ++ (show (tableName,record))
+
+  -- logm $ "not doing physical write" -- ++AZ++
   liftIO $ defaultAppend (tableNameToFileName tableName) (encode record)
 
   let s' = insertEntryQ s tableName record
@@ -864,11 +896,9 @@ getBucketSize :: State -> TableName -> Process (State,TableInfoRsp)
 getBucketSize s tableName = do
   logm $ "getBucketSize " ++ (show tableName)
   let mm = getMetaForTable s tableName
-  -- logm $ "getBucketSize:mm=" ++ (show mm)
   s' <- if (isNothing mm) then waitForTable s tableName
                           else return s
   let mm' = getMetaForTable s' tableName
-  -- logm $ "getBucketSize:mm'=" ++ (show mm')
   case mm' of
     Nothing -> do
       logm $ "  getBucketSize(nonexist) "

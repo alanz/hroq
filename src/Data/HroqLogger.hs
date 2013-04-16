@@ -5,6 +5,7 @@ module Data.HroqLogger
     startLoggerProcess
 
   , logm
+  , logt
   )
   where
 
@@ -43,7 +44,15 @@ startLoggerProcess node = do
     receiveWait
       [ match $ \((time, pid, string) ::(String, ProcessId, String)) -> do
           -- liftIO . hPutStrLn stderr $ time ++ " " ++ show pid ++ ": " ++ string
+
           liftIO . warningM (show pid) $ time ++ " " ++ show pid ++ ": " ++ string
+
+          {-
+          now <- liftIO getCurrentTime
+          let timeStr = drop 17 $ show now
+          liftIO . warningM (show pid) $ time ++ " " ++ timeStr ++ " " ++ show pid ++ ": " ++ string
+          -}
+
           loop
       {-
       , match $ \((time, string) :: (String, String)) -> do
@@ -63,9 +72,27 @@ startLoggerProcess node = do
 -- to the process registered as 'hroqlogger'.
 logm :: String -> Process ()
 logm string = do
+  {-
   now <- liftIO getCurrentTime
   us  <- getSelfPid
-  nsend registeredLoggerName (formatTime defaultTimeLocale "%c" now, us, string)
+  -- let timeStr = formatTime defaultTimeLocale "%c" now
+  let timeStr = show now -- Include us timing
+  nsend registeredLoggerName (timeStr, us, string)
+  -}
+  return ()
+
+
+-- | Log a string
+--
+-- @logm message@ sends a message (time, pid of the current process, message)
+-- to the process registered as 'hroqlogger'.
+logt :: String -> Process ()
+logt string = do
+  now <- liftIO getCurrentTime
+  us  <- getSelfPid
+  -- let timeStr = formatTime defaultTimeLocale "%c" now
+  let timeStr = show now -- Include us timing
+  nsend registeredLoggerName (timeStr, us, string)
   return ()
 
 

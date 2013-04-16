@@ -34,9 +34,7 @@ import Data.Time.Clock
 generate_key :: Process QKey
 generate_key = do
   k <- liftIO $ getCurrentTime
-  -- logm $ "generate_key:" ++ (show k)
   return $ QK (show k)
-  -- return $ QK "1"
 
 -- ---------------------------------------------------------------------
 {-
