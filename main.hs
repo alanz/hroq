@@ -3,16 +3,16 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
 
--- import Data.HroqDlqWorkers
+
+-- import Control.Distributed.Process.Backend.SimpleLocalnet
 import Control.Concurrent
 import Control.Distributed.Process hiding (call)
 import Control.Distributed.Process.Closure
-import Control.Distributed.Process.Node 
+import Control.Distributed.Process.Node
 import Control.Distributed.Process.Platform
 import Control.Distributed.Process.Platform.ManagedProcess hiding (runProcess)
 import Control.Distributed.Process.Platform.Time
 import Control.Distributed.Static (staticLabel, staticClosure)
--- import Control.Distributed.Static
 import Data.Binary
 import Data.DeriveTH
 import Data.Hroq
@@ -64,8 +64,8 @@ worker ekg = do
   let qNameA = QN "queue_a"
   let qNameB = QN "queue_b"
 
-  -- qSida <- startQueue (qNameA,"appinfo","blah")
-  -- logm $ "queue started:" ++ (show qSida)
+  qSida <- startQueue (qNameA,"appinfo","blah",ekg)
+  logm $ "queue started:" ++ (show qSida)
 
 
   qSidb <- startQueue (qNameB,"appinfo","blah",ekg)
@@ -89,7 +89,7 @@ worker ekg = do
   -- mapM_ (\n -> enqueueCast qSidb qNameB (qval $ "bar" ++ (show n))) [1..800]
 
   -- mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..51]
-  mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..11]
+  mapM_ (\n -> enqueue qNameB (qval $ "bar" ++ (show n))) [1..11]
 
   logm "enqueue done b"
 
@@ -105,12 +105,17 @@ worker ekg = do
 
   liftIO $ threadDelay (1*1000000) -- 1 seconds
 
-  pr <- peek qSidb qNameB
+  pr <- peek qNameB
   logm $ "peek:pr=" ++ (show pr)
 
   liftIO $ threadDelay (1*1000000) -- 1 seconds
 
-  pd <- dequeue qSidb qNameB (purge 0) Nothing
+  pd <- dequeue qNameB (purge 0) Nothing
+  logm $ "dequeue:pd=" ++ (show pd)
+
+  liftIO $ threadDelay (1*1000000) -- 1 seconds
+
+  pd <- dequeue qNameB (requeue qNameA) Nothing
   logm $ "dequeue:pd=" ++ (show pd)
 
   logm $ "blurble"
@@ -156,6 +161,26 @@ worker_mnesia ekg = do
 
 -- ---------------------------------------------------------------------  
 
+{-
+startLocalNode :: IO LocalNode
+startLocalNode = do
+    -- [role, host, port] <- getArgs
+  let [role, host, port] = ["foo","127.0.0.1", "10520"]
+  -- Right transport <- createTransport host port defaultTCPParameters
+  -- Right (transport,_internals) <- createTransportExposeInternals host port defaultTCPParameters
+  backend <- initializeBackend role host rtable
+  -- node <- newLocalNode transport rtable
+  node <- newLocalNode backend
+  startLoggerProcess node
+  return node
+  where
+    rtable :: RemoteTable
+    rtable = Data.HroqDlqWorkers.__remoteTable 
+           $ Control.Distributed.Process.Platform.__remoteTable
+           $ initRemoteTable
+-}
+
+
 startLocalNode :: IO LocalNode
 startLocalNode = do
     -- [role, host, port] <- getArgs
@@ -171,6 +196,7 @@ startLocalNode = do
            $ Control.Distributed.Process.Platform.__remoteTable
            $ initRemoteTable
   
+
 
 -- ---------------------------------------------------------------------
 

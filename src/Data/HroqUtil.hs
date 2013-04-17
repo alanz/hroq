@@ -18,7 +18,7 @@ import Control.Distributed.Process.Platform.Time
 import Data.Binary
 import Data.DeriveTH
 import Data.Typeable (Typeable)
-import Network.Transport.TCP (createTransportExposeInternals, defaultTCPParameters)
+-- import Network.Transport.TCP (createTransportExposeInternals, defaultTCPParameters)
 import qualified Data.Map as Map
 import Data.Hroq
 import Data.HroqLogger

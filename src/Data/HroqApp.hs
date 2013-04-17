@@ -32,7 +32,7 @@ import Data.Maybe
 import Data.RefSerialize
 -- import Data.TCache
 import Data.Typeable (Typeable)
-import Network.Transport.TCP (createTransportExposeInternals, defaultTCPParameters)
+-- import Network.Transport.TCP (createTransportExposeInternals, defaultTCPParameters)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 

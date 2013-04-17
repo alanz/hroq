@@ -37,12 +37,40 @@ import Data.HroqUtil
 import Data.List
 import Data.Maybe
 import Data.Typeable (Typeable)
-import Network.Transport.TCP (createTransportExposeInternals, defaultTCPParameters)
+-- import Network.Transport.TCP (createTransportExposeInternals, defaultTCPParameters)
 import qualified Data.HroqMnesia as HM
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 
 import qualified System.Remote.Monitoring as EKG
+
+--------------------------------------------------------------------------------
+-- API                                                                        --
+--------------------------------------------------------------------------------
+
+-- |Add an item to a queue
+enqueue :: QName -> QValue -> Process ()
+enqueue q v = mycall q (Enqueue q v)
+
+enqueueCast :: ProcessId -> QName -> QValue -> Process ()
+enqueueCast sid q v = cast sid (Enqueue q v)
+
+dequeue :: QName -> Closure QWorker -> Maybe ProcessId -> Process ReadOpReply
+dequeue q w mp = mycall q (ReadOpDequeue q w mp)
+
+peek :: QName -> Process ReadOpReply
+peek q = mycall q (ReadOpPeek q)
+
+
+-- TODO: erlang version starts a Q gen server per Q, uses the QName to
+-- lookup in the global process dict where it is.
+-- | Start a Queue server
+startQueue :: (QName,String,CleanupFunc,EKG.Server) -> Process ProcessId
+startQueue initParams@(qname,_,_,_) = do
+  let server = serverDefinition
+  sid <- spawnLocal $ start initParams initFunc server >> return ()
+  register (mkRegisteredQName qname) sid
+  return sid
 
 --------------------------------------------------------------------------------
 -- Types                                                                      --
@@ -164,31 +192,22 @@ data State = QueueState
         ]).
 -}
 
---------------------------------------------------------------------------------
--- API                                                                        --
---------------------------------------------------------------------------------
 
--- |Add an item to a queue
-enqueue :: ProcessId -> QName -> QValue -> Process ()
-enqueue sid q v = call sid (Enqueue q v)
+mkRegisteredQName :: QName -> String
+mkRegisteredQName (QN qname) = "HroqQueue:" ++ qname
 
-enqueueCast :: ProcessId -> QName -> QValue -> Process ()
-enqueueCast sid q v = cast sid (Enqueue q v)
+getSid :: QName -> Process ProcessId
+getSid qname = do
+  -- deliberately blow up if not registered
+  Just pid <- whereis (mkRegisteredQName qname)
+  return pid
 
-dequeue :: ProcessId -> QName -> Closure QWorker -> Maybe ProcessId -> Process ReadOpReply
-dequeue sid q w mp = call sid (ReadOpDequeue q w mp)
-
-peek :: ProcessId -> QName -> Process ReadOpReply
-peek sid q = call sid (ReadOpPeek q)
-
-
--- TODO: erlang version starts a Q gen server per Q, uses the QName to
--- lookup in the global process dict where it is.
--- | Start a Queue server
-startQueue :: (QName,String,CleanupFunc,EKG.Server) -> Process ProcessId
-startQueue initParams =
-  let server = serverDefinition
-  in spawnLocal $ start initParams initFunc server >> return ()
+mycall ::
+  (Typeable b, Typeable a, Binary b, Binary a) 
+  => QName -> a -> Process b
+mycall qname op = do
+  sid <- getSid qname
+  call sid op
 
 -- -----------------------------------------------------------------------------
 

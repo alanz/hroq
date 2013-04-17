@@ -10,7 +10,7 @@ module Data.HroqDlqWorkers
 
 import Control.Concurrent
 import Control.Distributed.Process hiding (call)
-import Control.Distributed.Process.Backend.SimpleLocalnet
+-- import Control.Distributed.Process.Backend.SimpleLocalnet
 import Control.Distributed.Process.Closure
 import Control.Distributed.Process.Internal.Types (NodeId(nodeAddress))
 import Control.Distributed.Process.Node
@@ -35,8 +35,9 @@ import qualified Data.Map as Map
 
 
 requeuer :: QName -> WorkerFunc
-requeuer destQ entry = do
+requeuer destQ entry@(QE _ qv) = do
   logm $ "purger:" ++ (show (destQ,entry))
+  enqueue destQ qv
   return (Right ())
 
 {-

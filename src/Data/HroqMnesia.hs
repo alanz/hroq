@@ -56,12 +56,12 @@ import Data.Hroq
 import Data.HroqLogger
 import Data.Int
 import Data.IORef
-import Data.List(elemIndices,isInfixOf)
+import Data.List(elemIndices,isInfixOf,(\\))
 import Data.Maybe(fromJust,fromMaybe,isNothing)
 import Data.RefSerialize
 import Data.Typeable (Typeable)
 import Data.Word
-import Network.Transport.TCP (createTransportExposeInternals, defaultTCPParameters)
+-- import Network.Transport.TCP (createTransportExposeInternals, defaultTCPParameters)
 import System.Directory
 import System.IO
 import System.IO.Error
@@ -321,6 +321,8 @@ updateTableInfoQ s tableName _storage vals = s'
     s' = s { sTableInfo = ti', sRamQ = rq' }
     -- s' = s { sTableInfo = ti', sRamQ = strictify rq' }
 
+-- ---------------------------------------------------------------------
+
 insertEntryQ :: State -> TableName -> QEntry -> State
 insertEntryQ s tableName val = s'
   where
@@ -337,6 +339,25 @@ insertEntryQ s tableName val = s'
                    else Map.insert tableName (                               [val]) (sRamQ s)
     s' = s {sTableInfo = ti', sRamQ = rq'}
 
+-- ---------------------------------------------------------------------
+
+deleteEntryQ :: State -> TableName -> QEntry -> State
+deleteEntryQ s tableName val = s'
+  where
+    -- Delete one from the Q size
+    curr@(TableMeta _ storage _) = getMetaForTableDefault s tableName
+    cnt = (fromMaybe 0 (tSize curr)) - 1
+    -- TODO: delete table if 0 or less
+    ti' = Map.insert tableName (curr { tSize = Just cnt }) (sTableInfo s)
+
+    -- remove the deleted record from the cache, if not DiscOnlyCopies
+    rq' = case storage of
+            DiscOnlyCopies -> (sRamQ s)
+            _ ->  if Map.member tableName (sRamQ s)
+                   then Map.insert tableName (((sRamQ s) Map.! tableName) \\ [val]) (sRamQ s)
+                   -- else Map.insert tableName (                               [val]) (sRamQ s)
+                   else (sRamQ s)
+    s' = s {sTableInfo = ti', sRamQ = rq'}
 
 --------------------------------------------------------------------------------
 -- API                                                                        --
@@ -574,9 +595,9 @@ handleDirtyReadQ s (DirtyReadQ tableName key) = do
 handleDirtyDeleteQ :: State -> DirtyDeleteQ -> Process (ProcessReply State ())
 handleDirtyDeleteQ s (DirtyDeleteQ tableName key) = do
     logt $ "handleDirtyDeleteQ starting"
-    do_dirty_delete_q tableName key
+    s' <- do_dirty_delete_q s tableName key
     logt $ "handleDirtyDeleteQ done"
-    reply () s
+    reply () s'
 
 handleDirtyWrite :: State -> DirtyWrite -> Process (ProcessReply State ())
 handleDirtyWrite s (DirtyWrite tableName val) = do
@@ -748,10 +769,39 @@ do_dirty_read_q tableName keyVal = do
 
 -- ---------------------------------------------------------------------
 
-do_dirty_delete_q :: TableName -> QKey -> Process (Maybe QEntry)
-do_dirty_delete_q tableName keyVal = do
-  logm $ "unimplemented dirty_delete_q:" ++ (show (tableName,keyVal)) -- ,keyVal))
-  return Nothing
+do_dirty_delete_q :: State -> TableName -> QKey -> Process (State)
+do_dirty_delete_q s tableName keyVal = do
+  logm $ "dirty_delete_q:" ++ (show (tableName,keyVal)) -- ,keyVal))
+  -- if we have a ramQ version, delete it from there and then dump the
+  -- whole thing to disk.
+  vals <- if Map.member tableName (sRamQ s)
+             then return $ (sRamQ s) Map.! tableName
+             else do qes <- loadTableIntoRamQ tableName
+                     return qes
+  let vals' = filter (\(QE key _) -> key /= keyVal) vals
+  let (TableMeta _s storage _type) = getMetaForTableDefault s tableName
+  let s' = updateTableInfoQ s tableName storage vals'
+
+  case vals' of
+    [] -> return ()
+    _ -> do liftIO $ defaultWrite (tableNameToFileName tableName) (encode $ head vals')
+            mapM_ (\v -> liftIO $ defaultAppend (tableNameToFileName tableName) (encode v)) $ tail vals'
+
+  return s'
+
+-- ---------------------------------------------------------------------
+
+loadTableIntoRamQ :: TableName -> Process [QEntry]
+loadTableIntoRamQ table = do
+  logm $ "loadTableIntoRam:" ++ (show table)
+  ems <- liftIO $ Exception.try $ decodeFileQEntry (tableNameToFileName table)
+  logm $ "loadTableIntoRam:ems=" ++ (show ems)
+  case ems of
+    Left (e :: IOError) -> do
+      logm $ "loadTableIntoRamQ:error=" ++ (show e)
+      return []
+    Right ms -> return $ ms
+
 
 -- ---------------------------------------------------------------------
 

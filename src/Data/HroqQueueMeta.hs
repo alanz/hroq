@@ -20,7 +20,7 @@ import Data.Binary
 import Data.DeriveTH
 import Data.List
 import Data.Typeable (Typeable)
-import Network.Transport.TCP (createTransportExposeInternals, defaultTCPParameters)
+-- import Network.Transport.TCP (createTransportExposeInternals, defaultTCPParameters)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Data.Hroq
