@@ -4,6 +4,7 @@ module Data.HroqApp
   (
     start_app
   , create_queue_meta_table
+  , hroq_consumer_local_storage_table
 
   )
   where

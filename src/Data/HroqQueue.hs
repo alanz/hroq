@@ -72,6 +72,27 @@ startQueue initParams@(qname,_,_,_) = do
   register (mkRegisteredQName qname) sid
   return sid
 
+{-
+% Interface exports
+-export([
+        start_link/3,
+        enqueue/2,
+        dequeue/4,
+        dequeue/5,
+        get_queue_size/1,
+        get_stats/1,
+        set_max_bucket_size/2,
+        set_cleanup/2,
+        peek/1,
+        get_app_info/1,
+        get_state/1,
+        is_subscribed/2,
+        unsubscribe/2,
+        create_table/2
+
+        ]).
+-}
+
 --------------------------------------------------------------------------------
 -- Types                                                                      --
 --------------------------------------------------------------------------------
@@ -171,26 +192,6 @@ data State = QueueState
 
 
 -- ---------------------------------------------------------------------
-{-
-% Interface exports
--export([
-        start_link/3,
-        enqueue/2,
-        dequeue/4,
-        dequeue/5,
-        get_queue_size/1,
-        get_stats/1,
-        set_max_bucket_size/2,
-        set_cleanup/2,
-        peek/1,
-        get_app_info/1,
-        get_state/1,
-        is_subscribed/2,
-        unsubscribe/2,
-        create_table/2
-
-        ]).
--}
 
 
 mkRegisteredQName :: QName -> String
