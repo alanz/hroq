@@ -16,6 +16,7 @@ import Control.Distributed.Static (staticLabel, staticClosure)
 import Data.Binary
 import Data.DeriveTH
 import Data.Hroq
+import Data.HroqConsumer
 import Data.HroqDlqWorkers
 import Data.HroqLogger
 import Data.HroqMnesia

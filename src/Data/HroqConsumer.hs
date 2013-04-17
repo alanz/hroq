@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 module Data.HroqConsumer
   (
     pause
@@ -59,15 +61,15 @@ resume_wait(ConsumerName, WaitForMs) when is_atom(ConsumerName) and ((WaitForMs 
 -}
 
 pause :: ConsumerName -> Process ()
-pause consumerName = cast (getPid consumerName) ConsumerPause
+pause consumerName = mycast consumerName ConsumerPause
 
 resume :: ConsumerName -> Process ()
-resume consumerName = cast (getPid consumerName) ConsumerResume
+resume consumerName = mycast consumerName ConsumerResume
 
 
 -- ConsumerName, AppInfo, SrcQueue, DlqQueue, WorkerModule, WorkerFunc, WorkerParams, State, DoCleanup
-startConsumer :: (ConsumerName,String,QName,QName,Closure(WorkerFunc),ConsumerState,Bool,EKG.Server) -> Process ProcessId
-startConsumer initParams@(consumerName,_,_,_,_,_,_,_,_) = do
+startConsumer :: (ConsumerName,String,QName,QName,ConsumerFunc,String,String,ConsumerState,Bool,EKG.Server) -> Process ProcessId
+startConsumer initParams@(consumerName,_,_,_,_,_,_,_,_,_) = do
   let server = serverDefinition
   sid <- spawnLocal $ start initParams initFunc server >> return ()
   register (mkRegisteredConsumerName consumerName) sid
@@ -75,7 +77,7 @@ startConsumer initParams@(consumerName,_,_,_,_,_,_,_,_) = do
 
 -- ---------------------------------------------------------------------
 
-getPid :: ConsumerName -> ProcessId
+getPid :: ConsumerName -> Process ProcessId
 getPid consumerName = do
   -- deliberately blow up if not registered
   Just pid <- whereis (mkRegisteredConsumerName consumerName)
@@ -84,12 +86,26 @@ getPid consumerName = do
 mkRegisteredConsumerName :: ConsumerName -> String
 mkRegisteredConsumerName (CN consumerName) = "HroqConsumer:" ++ consumerName
 
+mycall ::
+  (Typeable b, Typeable a, Binary b, Binary a) 
+  => ConsumerName -> a -> Process b
+mycall consumerName op = do
+  sid <- getPid consumerName
+  call sid op
+
+mycast ::
+  (Typeable a, Binary a) 
+  => ConsumerName -> a -> Process ()
+mycast consumerName op = do
+  sid <- getPid consumerName
+  cast sid op
+
 -- ---------------------------------------------------------------------
 
 -- |Init callback
--- [ConsumerName, AppInfo, SrcQueue, DlqQueue, WorkerModule, WorkerFunc, WorkerParams, InfoModule, InfoFunc, State, DoCleanup]
--- initFunc 
-initFunc (consumerName,appInfo,srcQueue,dlqQueue,worker,infoModule,infoFuncr,state,doCleanup,ekg) = do
+-- [ConsumerName, AppInfo, SrcQueue, DlqQueue, WorkerModule, ConsumerFunc, WorkerParams, InfoModule, InfoFunc, State, DoCleanup]
+initFunc :: InitHandler (ConsumerName,String,QName,QName,ConsumerFunc,String,String,ConsumerState,Bool,EKG.Server) State
+initFunc (consumerName,appInfo,srcQueue,dlqQueue,worker,infoModule,infoFunc,state,doCleanup,ekg) = do
     logm $ "HroqConsumer:initFunc starting"
 
 
@@ -153,9 +169,26 @@ data ConsumerName = CN !String
                     deriving (Eq,Show)
 
 
-data ConsumerPause  = ConsumerPause
-data ConsumerResume = ConsumerResume
+data ConsumerPause  = ConsumerPause  deriving (Typeable)
+data ConsumerResume = ConsumerResume deriving (Typeable)
 
+instance Binary ConsumerPause where
+  put _ = put 'P'
+  get   = do (_c::Char) <- get
+             return ConsumerPause
+
+instance Binary ConsumerResume where
+  put _ = put 'R'
+  get   = do (_c::Char) <- get
+             return ConsumerResume
+
+
+type ConsumerFunc = Closure (Process ())
+
+{-
+instance Show ConsumerFunc where
+  show _ = "ConsumerFunc"
+-}
 
 {-
     ConsumerState = #eroq_consumer_state    {
@@ -174,11 +207,11 @@ data ConsumerResume = ConsumerResume
                                             },
 -}
 data State = ConsumerState 
-    { csConsumerName :: !String
+    { csConsumerName :: !ConsumerName
     , csAppInfo      :: !String
     , csSrcQueue     :: !QName
     , csDlqQueue     :: !QName
-    , csWorker       :: !(Closure(WorkerFunc))
+    , csWorker       :: !ConsumerFunc
     , csInfoModule   :: !String -- for now
     , csInfoFunc     :: !String -- for now
     , csDoCleanup    :: !Bool
