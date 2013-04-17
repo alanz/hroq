@@ -162,9 +162,14 @@ startLocalNode = do
   let [role, host, port] = ["foo","127.0.0.1", "10520"]
   -- Right transport <- createTransport host port defaultTCPParameters
   Right (transport,_internals) <- createTransportExposeInternals host port defaultTCPParameters
-  node <- newLocalNode transport initRemoteTable
+  node <- newLocalNode transport rtable
   startLoggerProcess node
   return node
+  where
+    rtable :: RemoteTable
+    rtable = Data.HroqDlqWorkers.__remoteTable 
+           $ Control.Distributed.Process.Platform.__remoteTable
+           $ initRemoteTable
   
 
 -- ---------------------------------------------------------------------

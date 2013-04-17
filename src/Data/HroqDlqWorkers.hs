@@ -3,6 +3,8 @@ module Data.HroqDlqWorkers
   (
     requeue
   , purge
+
+  , __remoteTable
   )
   where
 
@@ -13,7 +15,7 @@ import Control.Distributed.Process.Closure
 import Control.Distributed.Process.Internal.Types (NodeId(nodeAddress))
 import Control.Distributed.Process.Node
 -- import Control.Distributed.Process.Node (initRemoteTable)
-import Control.Distributed.Process.Platform
+import Control.Distributed.Process.Platform hiding (__remoteTable)
 import Control.Distributed.Process.Platform.Async
 import Control.Distributed.Process.Platform.ManagedProcess hiding (runProcess)
 import Control.Distributed.Process.Platform.Time
