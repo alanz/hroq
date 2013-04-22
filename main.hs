@@ -194,6 +194,7 @@ startLocalNode = do
   where
     rtable :: RemoteTable
     rtable = Data.HroqDlqWorkers.__remoteTable 
+           $ Data.HroqConsumer.__remoteTable
            $ Control.Distributed.Process.Platform.__remoteTable
            $ initRemoteTable
   

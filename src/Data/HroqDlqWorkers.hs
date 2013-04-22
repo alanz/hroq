@@ -8,28 +8,11 @@ module Data.HroqDlqWorkers
   )
   where
 
-import Control.Concurrent
 import Control.Distributed.Process hiding (call)
--- import Control.Distributed.Process.Backend.SimpleLocalnet
 import Control.Distributed.Process.Closure
-import Control.Distributed.Process.Internal.Types (NodeId(nodeAddress))
-import Control.Distributed.Process.Node
--- import Control.Distributed.Process.Node (initRemoteTable)
-import Control.Distributed.Process.Platform hiding (__remoteTable)
-import Control.Distributed.Process.Platform.Async
-import Control.Distributed.Process.Platform.ManagedProcess hiding (runProcess)
-import Control.Distributed.Process.Platform.Time
-import Control.Distributed.Static (staticLabel, staticClosure)
-import Data.Binary
 import Data.Hroq
 import Data.HroqLogger
 import Data.HroqQueue
-import Data.Maybe
-import Data.RefSerialize
-import Data.Typeable
-import System.Environment (getArgs)
-import qualified Data.ByteString.Lazy.Char8 as C8
-import qualified Data.Map as Map
 
 -- ---------------------------------------------------------------------
 

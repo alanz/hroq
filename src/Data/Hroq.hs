@@ -4,7 +4,9 @@
 
 module Data.Hroq
   (
-    QKey(..)
+    ConsumerName(..)
+  , ConsumerMessage(..)
+  , QKey(..)
   , QValue(..)
   , QEntry(..)
   , QName(..)
@@ -30,7 +32,7 @@ import Control.Distributed.Process.Platform
 import Control.Distributed.Process.Platform.Async
 import Control.Distributed.Process.Platform.ManagedProcess hiding (runProcess)
 import Control.Distributed.Process.Platform.Time
-import Control.Monad(when,replicateM,foldM,liftM3,liftM2,liftM)
+import Control.Monad(when,replicateM,foldM,liftM4,liftM3,liftM2,liftM)
 import Data.Binary
 import Data.HroqLogger
 import Data.Maybe
@@ -49,6 +51,13 @@ maxBucketSizeConst = 50
 -- maxBucketSizeConst = 500
 
 -- ---------------------------------------------------------------------
+
+data ConsumerName = CN !String
+                    deriving (Eq,Show,Typeable)
+instance Binary ConsumerName where
+  put (CN n) = put n
+  get = liftM CN get
+
 
 data QName = QN !String
              deriving (Typeable,Show,Read,Eq)
@@ -139,6 +148,16 @@ instance Binary TimeStamp where
   get = do
     s <- get
     return (TS s)
+
+-- ---------------------------------------------------------------------
+
+-- -record(eroq_consumer_message,  {cid, key, msg, src_queue, timestamp = now()}).
+
+data ConsumerMessage = CM ConsumerName QEntry QName TimeStamp
+                       deriving (Show,Typeable,Eq)
+instance Binary ConsumerMessage where
+  put (CM key val srcQueue ts) = put key >> put val >> put srcQueue >> put ts
+  get = liftM4 CM get get get get
 
 -- ---------------------------------------------------------------------
 

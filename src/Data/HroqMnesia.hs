@@ -14,8 +14,10 @@ module Data.HroqMnesia
   , dirty_write
   , dirty_write_q
   , dirty_write_q_sid
+  , dirty_write_ls
   , dirty_read
   , dirty_read_q
+  , dirty_read_ls
   , dirty_delete_q
   , dirty_all_keys
   , wait_for_tables
@@ -124,6 +126,10 @@ data DirtyRead = DirtyRead !TableName !MetaKey
 data DirtyReadQ = DirtyReadQ !TableName !QKey
                    deriving (Typeable, Show)
 
+--  , dirty_read
+data DirtyReadLS = DirtyReadLS !TableName !ConsumerName
+                   deriving (Typeable, Show)
+
 --  , dirty_delete_q
 data DirtyDeleteQ = DirtyDeleteQ !TableName !QKey
                    deriving (Typeable, Show)
@@ -134,6 +140,10 @@ data DirtyWrite = DirtyWrite !TableName !Meta
 
 --  , dirty_write_q
 data DirtyWriteQ = DirtyWriteQ !TableName !QEntry
+                   deriving (Typeable, Show)
+
+--  , dirty_write_ls
+data DirtyWriteLS = DirtyWriteLS !TableName !ConsumerMessage
                    deriving (Typeable, Show)
 
 --  , table_info
@@ -192,6 +202,10 @@ instance Binary DirtyReadQ where
   put (DirtyReadQ tn key) = put tn >> put key
   get = liftM2 DirtyReadQ get get
 
+instance Binary DirtyReadLS where
+  put (DirtyReadLS tn key) = put tn >> put key
+  get = liftM2 DirtyReadLS get get
+
 instance Binary DirtyDeleteQ where
   put (DirtyDeleteQ tn key) = put tn >> put key
   get = liftM2 DirtyDeleteQ get get
@@ -203,6 +217,10 @@ instance Binary DirtyWrite where
 instance Binary DirtyWriteQ where
   put (DirtyWriteQ tn key) = put tn >> put key
   get = liftM2 DirtyWriteQ get get
+
+instance Binary DirtyWriteLS where
+  put (DirtyWriteLS tn msg) = put tn >> put msg
+  get = liftM2 DirtyWriteLS get get 
 
 instance Binary TableInfo where
   put (TableInfo tn req) = put tn >> put req
@@ -341,6 +359,28 @@ insertEntryQ s tableName val = s'
 
 -- ---------------------------------------------------------------------
 
+insertEntryLS :: State -> TableName -> ConsumerMessage -> State
+insertEntryLS s tableName val = s'
+  where
+    -- Add one to the Q size
+    curr@(TableMeta _ storage _) = getMetaForTableDefault s tableName
+    cnt = (fromMaybe 0 (tSize curr)) + 1
+    ti' = Map.insert tableName (curr { tSize = Just cnt }) (sTableInfo s)
+
+  -- TODO: add ram caching for local storage
+{-
+    -- Add the written record to the cache, if not DiscOnlyCopies
+    rq' = case storage of
+            DiscOnlyCopies -> (sRamQ s)
+            _ ->  if Map.member tableName (sRamQ s)
+                   then Map.insert tableName (((sRamQ s) Map.! tableName) ++ [val]) (sRamQ s)
+                   else Map.insert tableName (                               [val]) (sRamQ s)
+    s' = s {sTableInfo = ti', sRamQ = rq'}
+-}
+    s' = s {sTableInfo = ti'}
+
+-- ---------------------------------------------------------------------
+
 deleteEntryQ :: State -> TableName -> QEntry -> State
 deleteEntryQ s tableName val = s'
   where
@@ -387,6 +427,9 @@ dirty_read tableName key = mycall (DirtyRead tableName key)
 dirty_read_q :: TableName -> QKey -> Process (Maybe QEntry)
 dirty_read_q tableName key = mycall (DirtyReadQ tableName key)
 
+dirty_read_ls :: TableName -> ConsumerName -> Process (Maybe ConsumerMessage)
+dirty_read_ls tableName key = mycall (DirtyReadLS tableName key)
+
 dirty_delete_q :: TableName -> QKey -> Process ()
 dirty_delete_q tableName key = mycall (DirtyDeleteQ tableName key)
 
@@ -403,6 +446,9 @@ dirty_write_q tablename val = do
 
 dirty_write_q_sid :: ProcessId -> TableName -> QEntry -> Process ()
 dirty_write_q_sid sid tablename val = call sid (DirtyWriteQ tablename val)
+
+dirty_write_ls :: TableName -> ConsumerMessage -> Process ()
+dirty_write_ls tablename val = mycall (DirtyWriteLS tablename val)
 
 
 table_info :: TableName -> TableInfoReq -> Process TableInfoRsp
@@ -515,9 +561,11 @@ serverDefinition = defaultProcess {
         , handleCall handleDirtyAllKeys
         , handleCall handleDirtyRead
         , handleCall handleDirtyReadQ
+        , handleCall handleDirtyReadLS
         , handleCall handleDirtyDeleteQ
         , handleCall handleDirtyWrite
         , handleCall handleDirtyWriteQ
+        , handleCall handleDirtyWriteLS
         , handleCall handleTableInfo
         , handleCall handleWaitForTables
 
@@ -592,6 +640,13 @@ handleDirtyReadQ s (DirtyReadQ tableName key) = do
     logt $ "handleDirtyReadQ done"
     reply res s
 
+handleDirtyReadLS :: State -> DirtyReadLS -> Process (ProcessReply State (Maybe ConsumerMessage))
+handleDirtyReadLS s (DirtyReadLS consumerName key) = do
+    logt $ "handleDirtyReadLS starting"
+    res <- do_dirty_read_ls consumerName key
+    logt $ "handleDirtyReadLS done"
+    reply res s
+
 handleDirtyDeleteQ :: State -> DirtyDeleteQ -> Process (ProcessReply State ())
 handleDirtyDeleteQ s (DirtyDeleteQ tableName key) = do
     logt $ "handleDirtyDeleteQ starting"
@@ -611,6 +666,13 @@ handleDirtyWriteQ s (DirtyWriteQ tableName val) = do
     logt $ "handleDirtyWriteQ starting"
     s' <- do_dirty_write_q s tableName val
     logt $ "handleDirtyWriteQ done"
+    reply () s'
+
+handleDirtyWriteLS :: State -> DirtyWriteLS -> Process (ProcessReply State ())
+handleDirtyWriteLS s (DirtyWriteLS tableName val) = do
+    logt $ "handleDirtyWriteLs starting"
+    s' <- do_dirty_write_ls s tableName val
+    logt $ "handleDirtyWriteLS done"
     reply () s'
 
 
@@ -726,12 +788,22 @@ do_dirty_write s tableName record = do
 do_dirty_write_q ::
    State -> TableName -> QEntry -> Process State
 do_dirty_write_q s tableName record = do
-  logm $ "dirty_write:" ++ (show (tableName,record))
+  logm $ "dirty_write_q:" ++ (show (tableName,record))
 
   -- logm $ "not doing physical write" -- ++AZ++
   liftIO $ defaultAppend (tableNameToFileName tableName) (encode record)
 
   let s' = insertEntryQ s tableName record
+  return s'
+
+do_dirty_write_ls ::
+   State -> TableName -> ConsumerMessage -> Process State
+do_dirty_write_ls s tableName record = do
+  logm $ "dirty_write_ls:" ++ (show (tableName,record))
+
+  liftIO $ defaultAppend (tableNameToFileName tableName) (encode record)
+
+  let s' = insertEntryLS s tableName record
   return s'
 
 -- ---------------------------------------------------------------------
@@ -764,6 +836,23 @@ do_dirty_read_q tableName keyVal = do
     Right ms -> do
       let ms' = filter (\(QE key _) -> key == keyVal) ms
       logm $ "do_dirty_read_q ms' " ++ (show keyVal) ++ ":" ++ (show ms')
+      if ms' == [] then return Nothing
+                   else return $ Just (head ms')
+
+-- ---------------------------------------------------------------------
+
+do_dirty_read_ls :: TableName -> ConsumerName -> Process (Maybe ConsumerMessage)
+do_dirty_read_ls tableName keyVal = do
+  logm $ "dirty_read_ls:" ++ (show (tableName)) -- ,keyVal))
+  -- TODO: check if this is in the RAM cache first
+  ems <- liftIO $ Exception.try $ decodeFileConsumerMessage (tableNameToFileName tableName)
+  case ems of
+    Left (e::IOError) -> do
+      logm $ "do_dirty_read_ls e " ++ (show keyVal) ++ ":" ++ (show e)
+      return Nothing
+    Right ms -> do
+      let ms' = filter (\(CM key _ _ _) -> key == keyVal) ms
+      logm $ "do_dirty_read_ls ms' " ++ (show keyVal) ++ ":" ++ (show ms')
       if ms' == [] then return Nothing
                    else return $ Just (head ms')
 
@@ -876,6 +965,9 @@ decodeFileMeta = decodeFileBinaryList
 
 decodeFileQEntry :: FilePath -> IO [QEntry]
 decodeFileQEntry = decodeFileBinaryList
+
+decodeFileConsumerMessage :: FilePath -> IO [ConsumerMessage]
+decodeFileConsumerMessage = decodeFileBinaryList
 
 -- ---------------------------------------------------------------------
 

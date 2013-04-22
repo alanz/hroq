@@ -12,6 +12,7 @@ module Data.HroqQueue
   , startQueue
 
   , WorkerFunc
+  , ReadOpReply(..)
 
   -- * debug
   , enqueue_one_message
