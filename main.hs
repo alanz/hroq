@@ -117,10 +117,12 @@ worker ekg = do
 
   liftIO $ threadDelay (1*1000000) -- 1 seconds
 
+
   pd <- dequeue qNameB (requeue qNameA) Nothing
   logm $ "dequeue:pd=" ++ (show pd)
 
   logm $ "blurble"
+  liftIO $ threadDelay (1*1000000) -- 1 seconds
 
   -- liftIO $ threadDelay (10*60*1000000) -- Ten minutes
   return ()

@@ -929,7 +929,7 @@ do_dirty_delete_q s tableName keyVal = do
     [] -> return ()
     _ -> do liftIO $ defaultWrite (tableNameToFileName tableName) (encode $ head vals')
             mapM_ (\v -> liftIO $ defaultAppend (tableNameToFileName tableName) (encode v)) $ tail vals'
-
+  logm $ "dirty_delete_q:done"
   return s'
 
 -- ---------------------------------------------------------------------
