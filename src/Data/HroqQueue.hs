@@ -168,7 +168,7 @@ data State = QueueState
    , qsQueueName          :: !QName
    , qsDoCleanup          :: CleanupFunc -- Should be a function eventually?
    , qsIndexList          :: ![QKey]
-   , qsSubscriberPidDict  :: !(Set.Set ProcessId)
+   , qsSubscriberPidDict  :: !(Map.Map ProcessId MonitorRef)
    , qsMnesiaSid          :: !ProcessId
    , qsEkg                :: !EKG.Server
    }
@@ -260,7 +260,7 @@ initFunc (queueName,appInfo,doCleanup,ekg) = do
              , qsQueueName          = queueName
              , qsDoCleanup          = doCleanup
              , qsIndexList          = sort allKeys
-             , qsSubscriberPidDict  = Set.empty
+             , qsSubscriberPidDict  = Map.empty
              , qsMnesiaSid          = mnesiaSid
              , qsEkg                = ekg
              }
@@ -388,6 +388,15 @@ serverDefinition = defaultProcess {
      , terminateHandler = \_ reason -> do { logm $ "HroqQueue terminateHandler:" ++ (show reason) }
     } :: ProcessDefinition State
 
+handleReadOp :: State -> ReadOp -> Process (ProcessReply State ReadOpReply)
+handleReadOp s readOp = do
+    -- {(logm "dequeuing") ; reply () (s) }
+    logt $ "handleReadOp starting"
+    (res,s') <- do_read_op readOp s
+    logt $ "handleReadOp done"
+    reply res s'
+
+
 -- Note: the handlers match on type signature
 handleEnqueue :: State -> Enqueue -> Process (ProcessReply State ())
 handleEnqueue s (Enqueue q v) = do
@@ -415,16 +424,6 @@ handle_call({enqueue, QueueName, Message}, From, ServerState)->
     ERoqMsg = eroq_util:construct_bucket_message(Message),
     handle_call({enqueue, QueueName,ERoqMsg}, From, ServerState);
 -}
-
-
-handleReadOp :: State -> ReadOp -> Process (ProcessReply State ReadOpReply)
-handleReadOp s readOp = do
-    -- {(logm "dequeuing") ; reply () (s) }
-    logt $ "handleReadOp starting"
-    (res,s') <- do_read_op readOp s
-    logt $ "handleReadOp done"
-    reply res s'
-
 
 -- ---------------------------------------------------------------------
 -- Actual workers, not just handlers
@@ -556,12 +555,19 @@ handle_call({read, Action}, _From,  #eroq_queue_state{total_queue_size = Qs} = S
     (res,s') <- if qs == 0
       then
         case op of
-          ReadOpDequeue q worker mpid -> do
-            if isJust mpid
-              then do
-                -- TODO: add monitoring
-                return (ReadOpReplyEmpty,s)
-              else do return (ReadOpReplyEmpty,s)
+          ReadOpDequeue _q worker mpid -> do
+            case mpid of
+              Just pid -> do
+                let subsPidDict = qsSubscriberPidDict s
+                case (Map.member pid subsPidDict) of
+                  True -> do
+                    -- Already in the list of subs ...
+                    return (ReadOpReplyEmpty,s)
+                  False -> do
+                    monRef <- monitor pid
+                    let newSubsPidDics = Map.insert pid monRef subsPidDict
+                    return (ReadOpReplyEmpty,s { qsSubscriberPidDict = newSubsPidDics })
+              Nothing ->  do return (ReadOpReplyEmpty,s)
           _ -> do return (ReadOpReplyEmpty,s)
 {-
         case Action of

@@ -23,6 +23,7 @@ import Data.HroqLogger
 import Data.HroqMnesia
 import Data.HroqQueue
 import Data.HroqQueueMeta
+import Data.HroqSampleWorker
 import Data.Maybe
 import Data.RefSerialize
 import Data.Typeable (Typeable)
@@ -40,7 +41,8 @@ main = do
 
   node <- startLocalNode
 
-  runProcess node (worker ekg)
+  -- runProcess node (worker ekg)
+  runProcess node (worker_consumer ekg)
   -- runProcess node worker_mnesia
 
   closeLocalNode node
@@ -129,6 +131,66 @@ worker ekg = do
 
 -- ---------------------------------------------------------------------
 
+worker_consumer :: EKG.Server -> Process ()
+worker_consumer ekg = do
+  mnesiaSid <- startHroqMnesia ekg
+  logm "mnesia started"
+
+  App.start_app
+  logm "app started"
+
+  {-
+  {ok, QPid} = eroq_queue:start_link(my_queue, "SLAP", true).
+  {ok, DlqPid} = eroq_queue:start_link(my_dlq, "SLAP-DLQ", true).
+  -}
+  qPid   <- startQueue (QN "SLAP",    "my_queue","SLAP",ekg)
+  dlqPid <- startQueue (QN "SLAP-DLQ","my_dlq",  "SLAP",ekg)
+
+{-
+%The consumer will call CMod:CFun(Key, Message, CArgs) to process a message on the queue
+CMod = my_worker_mod. 
+CFun = process_message. 
+CArgs = [my_args_any].
+CInitialState = active. %active or paused - the entry state of the consumer
+CDoCleanupAtShutdown = true.
+AppConsumerTypeInfo = "SLAP-DLQ".
+SrcQueue = my_queue.    %I.e the consumer will process messages on this queue
+Dlq      = my_dlq.      %I.e. if your CMod:CFun returns an unexpected value or cause an exception, the message will be placed on this queue
+
+{ok, CPid} = eroq_consumer:start_link(my_cons, AppConsumerTypeInfo, SrcQueue, Dlq, CMod, CFun, CArgs, CInitialState, CDoCleanupAtShutdown).
+
+startConsumer :: (ConsumerName,String,QName,QName,ConsumerFuncClosure,AppParams,String,String,ConsumerState,Bool,EKG.Server) -> Process ProcessId
+
+-}
+  cpid <- startConsumer (CN "my_cons","SLAP-DLQ",QN "SLAP",QN "SLAP-DLQ",sampleWorker,AP [],"foo","bar",ConsumerActive,False,ekg)
+
+  logm "worker started all"
+
+  -- enqueue qSida qNameA (qval "foo1")
+  -- enqueue qSida qNameA (qval "foo2")
+  -- logm "enqueue done a"
+
+  -- mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..80000]
+  -- mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..8000]
+  -- mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..2000]
+  -- mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..800]
+  -- mapM_ (\n -> enqueueCast qSidb qNameB (qval $ "bar" ++ (show n))) [1..800]
+
+  -- mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..51]
+  mapM_ (\n -> enqueue (QN "SLAP") (qval $ "bar" ++ (show n))) [1..11]
+
+  logm "enqueue done SLAP"
+
+  liftIO $ threadDelay (1*1000000) -- 1 seconds
+
+  logm $ "blurble"
+  liftIO $ threadDelay (1*1000000) -- 1 seconds
+
+  -- liftIO $ threadDelay (10*60*1000000) -- Ten minutes
+  return ()
+
+-- ---------------------------------------------------------------------
+
 worker_mnesia :: EKG.Server -> Process ()
 worker_mnesia ekg = do
   mnesiaSid <- startHroqMnesia ekg
@@ -196,9 +258,10 @@ startLocalNode = do
   return node
   where
     rtable :: RemoteTable
-    rtable = Data.HroqDlqWorkers.__remoteTable 
+    rtable = Control.Distributed.Process.Platform.__remoteTable
            $ Data.HroqConsumerTH.__remoteTable
-           $ Control.Distributed.Process.Platform.__remoteTable
+           $ Data.HroqDlqWorkers.__remoteTable 
+           $ Data.HroqSampleWorker.__remoteTable
            $ initRemoteTable
   
 

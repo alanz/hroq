@@ -7,6 +7,11 @@ module Data.HroqConsumer
     pause
   , resume
 
+  , get_state
+
+  , ConsumerState(..)
+  , ConsumerReply(..)
+  , AppParams(..)
   , startConsumer
   , __remoteTable
   )
@@ -75,6 +80,8 @@ pause consumerName = mycast consumerName ConsumerPause
 resume :: ConsumerName -> Process ()
 resume consumerName = mycast consumerName ConsumerResume
 
+get_state :: ProcessId -> Process State
+get_state pid = call pid GetState
 
 -- ConsumerName, AppInfo, SrcQueue, DlqQueue, WorkerModule, WorkerFunc, WorkerParams, State, DoCleanup
 startConsumer :: (ConsumerName,String,QName,QName,ConsumerFuncClosure,AppParams,String,String,ConsumerState,Bool,EKG.Server) -> Process ProcessId
@@ -137,6 +144,7 @@ initFunc (consumerName,appInfo,srcQueue,dlqQueue,worker,appParams,infoModule,inf
 
     -- Pid = spawn_link(F),
     pid <- spawnLinkLocal f
+    logm $ "HroqConsumer:initFunc:spawned worker:" ++ (show pid)
 
 {-
     ConsumerState = #eroq_consumer_state    {
@@ -339,6 +347,7 @@ serverDefinition = defaultProcess {
      apiHandlers = [
           handleCast handlePause
         , handleCast handleResume
+        , handleCall handleGetState
 
         -- Internal worker-to-master comms
         , handleCast handleUpdateCounters
@@ -388,6 +397,11 @@ handleUpdateCounters s (ConsumerUpdateCounters qe p err) = do
     logt $ "handleUpdateCounters done"
     continue s'
 
+handleGetState :: State -> GetState -> Process (ProcessReply State State)
+handleGetState s GetState = do
+    logt $ "HroqConsumer.handleGetState called"
+    reply s s
+
 -- ---------------------------------------------------------------------
 
 -- -record(wstate, {waiting = no, app_params = undefined}).
@@ -405,7 +419,7 @@ instance Binary AppParams where
 data WorkerState = WorkerState
   { wsWaiting   :: Waiting
   , wsAppParams :: AppParams
-  }
+  } deriving (Show)
 
 data Waiting = WaitNo
              | WaitQueue
@@ -475,15 +489,15 @@ process_local_storage dlqQueue cName worker = do
           -- ok = eroq_util:retry_dirty_delete(10, eroq_consumer_local_storage_table, CName);
           HM.dirty_delete_q hroq_consumer_local_storage_table (consumerNameKey cName)
           return rr
-        Right (ConsumerReplyOkTimeout timeoutVal) -> do
+        Right (ConsumerReplyOkTimeout _timeoutVal) -> do
           HM.dirty_delete_q hroq_consumer_local_storage_table (consumerNameKey cName)
           return rr
-        Right (ConsumerReplyOkNewParams newWorkerParams timeoutVal) -> do
+        Right (ConsumerReplyOkNewParams _newWorkerParams _timeoutVal) -> do
           HM.dirty_delete_q hroq_consumer_local_storage_table (consumerNameKey cName)
           return rr
-        Right (ConsumerReplyRetry timeoutVal) -> do
+        Right (ConsumerReplyRetry _timeoutVal) -> do
           return rr
-        Right (ConsumerReplyRetryNewParams newWorkerParams timeoutVal) -> do
+        Right (ConsumerReplyRetryNewParams _newWorkerParams _timeoutVal) -> do
           return rr
         Left e -> do
           dlq_message msg dlqQueue e
@@ -511,9 +525,10 @@ worker_entry(CName, CPid, EntryState, AppParams) ->
 
 worker_entry :: ConsumerName -> ProcessId -> ConsumerState -> AppParams
             -> Process ()
-worker_entry cName cPid entryState appParams =
+worker_entry cName cPid entryState appParams = do
     -- process_flag(trap_exit, true),
-    worker_loop cName cPid entryState (WorkerState WaitQueue appParams)
+    logm $ "HroqConsumer.worker_entry:(cName,cPid,entryState,appParams)=" ++ (show (cName,cPid,entryState,appParams))
+    worker_loop cName cPid entryState (WorkerState WaitNo appParams)
 
 
 {-
@@ -524,6 +539,7 @@ worker_loop :: ConsumerName -> ProcessId -> ConsumerState -> WorkerState
             -> Process ()
 worker_loop _ _ ConsumerExit _ = do return ()
 worker_loop cName cPid state wState = do
+  logm $ "HroqConsumer.worker_loop:(cName,cPid,state,wState)=" ++ (show (cName,cPid,state,wState))
   let waiting = wsWaiting wState
 {-
     RxTimeoutMs =
@@ -545,6 +561,7 @@ worker_loop cName cPid state wState = do
         infinity
     end,
 -}
+  logm $ "HroqConsumer.worker_loop:waiting=" ++ (show waiting)
   rxTimeoutMs <- case state of
     ConsumerActive -> case waiting of
          WaitNo -> return $ Delay $ milliSeconds 0
@@ -556,7 +573,9 @@ worker_loop cName cPid state wState = do
                 then return $ Delay $ milliSeconds
                             $ round (((realToFrac sleepTimeMs) - (realToFrac diffMs)) * 1000)
                 else return $ Delay $ milliSeconds 0
+         WaitQueue -> return Infinity
     _ -> return Infinity
+  logm $ "HroqConsumer.worker_loop:rxTimeoutMs=" ++ (show rxTimeoutMs)
 
 {-
     {NewState, NewWState} =
@@ -619,7 +638,9 @@ worker_loop cName cPid state wState = do
         Nothing  -> do
           if state == ConsumerActive
             then do
+              logm $ "HroqConsumer.worker_loop:about to worker_process_message:" ++ (show (cPid,wState))
               n <- worker_process_message cPid wState
+              logm $ "HroqConsumer.worker_loop:worker_process_message done:n="  ++ (show n)
               return (state,n)
             else return (state,wState)
         Just ret -> return ret
@@ -703,22 +724,11 @@ data Instruction = InstructionProcessLocal
 -- worker_process_message(CPid, #wstate{app_params = WorkerParams} = WState) ->
 worker_process_message :: ProcessId -> WorkerState -> Process WorkerState
 worker_process_message cPid wState = do
-
+  logm $ "HroqConsumer.worker_process_message:(cPid,wState)=" ++ (show (cPid,wState))
   -- StateData = gen_server:call(CPid, get_state, infinity),
   stateData <- call cPid GetState :: Process State
+  logm $ "HroqConsumer.worker_process_message:stateData=" ++ (show stateData)
 
-{-
-    CName                = StateData#eroq_consumer_state.consumer_name,
-    SrcQueue             = StateData#eroq_consumer_state.src_queue,
-    DlqQueue             = StateData#eroq_consumer_state.dlq_queue,
-
-    WorkerModule         = StateData#eroq_consumer_state.worker_module,
-    WorkerFunc           = StateData#eroq_consumer_state.worker_func,
-
-    QueueEmptyCount      = StateData#eroq_consumer_state.src_queue_empty_count,
-    ProcessedCount       = StateData#eroq_consumer_state.processed_count,
-    ErrorCount           = StateData#eroq_consumer_state.error_count,
--}
   let cName           = csConsumerName       stateData
       srcQueue        = csSrcQueue           stateData
       dlqQueue        = csDlqQueue           stateData
@@ -738,8 +748,8 @@ worker_process_message cPid wState = do
   firstProcLocalStorage <- do
     r <- HM.dirty_read_q hroq_consumer_local_storage_table (consumerNameKey cName)
     case r of
-      Nothing -> return True
-      Just _  -> return False
+      Nothing -> return False
+      Just _  -> return True
   logm $ "HroqConsumer:firstProcLocalStorage=" ++ (show firstProcLocalStorage)
 {-
     Instruction =
@@ -769,6 +779,9 @@ worker_process_message cPid wState = do
               logm $ "HRoqConsumer:acquisition_error" ++ (show (cName,srcQueue,e))
               return InstructionSleepError
        else return InstructionProcessLocal
+
+  logm $ "HroqConsumer:instruction=" ++ (show instruction)
+
 {-
     case Instruction of
     process_local ->
@@ -801,8 +814,11 @@ worker_process_message cPid wState = do
 
   wState' <- case instruction of
     InstructionProcessLocal -> do
+      logm $ "HroqConsumer:about to unClosure worker"
       w <- unClosure worker
+      logm $ "HroqConsumer:about to process_local_storage"
       rr <- process_local_storage dlqQueue cName w
+      logm $ "HroqConsumer:process_local_storage done,rr=" ++ (show rr)
       case rr of
         Right (ConsumerReplyOk) -> do
             -- gen_server:cast(CPid, {update_counters, QueueEmptyCount, ProcessedCount + 1, ErrorCount}),
@@ -833,6 +849,9 @@ worker_process_message cPid wState = do
             -- WState#wstate{waiting = {resume, now(), TimeoutMs}, app_params = NewWorkerParams};
             now <- liftIO $ getCurrentTime
             return $ wState { wsWaiting = WaitResume now timeoutVal, wsAppParams = newWorkerParams }
+
+        Right (ConsumerReplyEmpty) -> do
+            return $ wState { wsWaiting = WaitNo }
 
         Left e -> do
             -- gen_server:cast(CPid, {update_counters, QueueEmptyCount, ProcessedCount, ErrorCount + 1}),
