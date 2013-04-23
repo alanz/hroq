@@ -17,6 +17,7 @@ import Data.Binary
 import Data.DeriveTH
 import Data.Hroq
 import Data.HroqConsumer
+import Data.HroqConsumerTH
 import Data.HroqDlqWorkers
 import Data.HroqLogger
 import Data.HroqMnesia
@@ -194,7 +195,7 @@ startLocalNode = do
   where
     rtable :: RemoteTable
     rtable = Data.HroqDlqWorkers.__remoteTable 
-           $ Data.HroqConsumer.__remoteTable
+           $ Data.HroqConsumerTH.__remoteTable
            $ Control.Distributed.Process.Platform.__remoteTable
            $ initRemoteTable
   

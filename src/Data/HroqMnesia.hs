@@ -19,6 +19,7 @@ module Data.HroqMnesia
   , dirty_read_q
   , dirty_read_ls
   , dirty_delete_q
+  , dirty_delete_ls
   , dirty_all_keys
   , wait_for_tables
 
@@ -134,6 +135,10 @@ data DirtyReadLS = DirtyReadLS !TableName !ConsumerName
 data DirtyDeleteQ = DirtyDeleteQ !TableName !QKey
                    deriving (Typeable, Show)
 
+--  , dirty_delete_ls
+data DirtyDeleteLS = DirtyDeleteLS !TableName !ConsumerName
+                   deriving (Typeable, Show)
+
 --  , dirty_write
 data DirtyWrite = DirtyWrite !TableName !Meta
                    deriving (Typeable, Show)
@@ -209,6 +214,10 @@ instance Binary DirtyReadLS where
 instance Binary DirtyDeleteQ where
   put (DirtyDeleteQ tn key) = put tn >> put key
   get = liftM2 DirtyDeleteQ get get
+
+instance Binary DirtyDeleteLS where
+  put (DirtyDeleteLS tn key) = put tn >> put key
+  get = liftM2 DirtyDeleteLS get get
 
 instance Binary DirtyWrite where
   put (DirtyWrite tn key) = put tn >> put key
@@ -339,6 +348,20 @@ updateTableInfoQ s tableName _storage vals = s'
     s' = s { sTableInfo = ti', sRamQ = rq' }
     -- s' = s { sTableInfo = ti', sRamQ = strictify rq' }
 
+updateTableInfoLS :: State -> TableName -> TableStorage -> [ConsumerMessage] -> State
+updateTableInfoLS s tableName _storage vals = s'
+  where
+    m@(TableMeta _ storage _) = getMetaForTableDefault s tableName
+    cnt = fromIntegral $ length vals
+    ti' = Map.insert tableName (m { tSize = Just cnt }) (sTableInfo s)
+    {-
+    rq' = case storage of
+            DiscOnlyCopies -> (sRamQ s)
+            _ ->  Map.insert tableName vals (sRamQ s)
+    s' = s { sTableInfo = ti', sRamQ = rq' }
+    -}
+    s' = s { sTableInfo = ti' }
+
 -- ---------------------------------------------------------------------
 
 insertEntryQ :: State -> TableName -> QEntry -> State
@@ -432,6 +455,9 @@ dirty_read_ls tableName key = mycall (DirtyReadLS tableName key)
 
 dirty_delete_q :: TableName -> QKey -> Process ()
 dirty_delete_q tableName key = mycall (DirtyDeleteQ tableName key)
+
+dirty_delete_ls :: TableName -> ConsumerName -> Process ()
+dirty_delete_ls tableName key = mycall (DirtyDeleteLS tableName key)
 
 dirty_write :: TableName -> Meta -> Process ()
 dirty_write tableName val = mycall (DirtyWrite tableName val)
@@ -563,6 +589,7 @@ serverDefinition = defaultProcess {
         , handleCall handleDirtyReadQ
         , handleCall handleDirtyReadLS
         , handleCall handleDirtyDeleteQ
+        , handleCall handleDirtyDeleteLS
         , handleCall handleDirtyWrite
         , handleCall handleDirtyWriteQ
         , handleCall handleDirtyWriteLS
@@ -652,6 +679,13 @@ handleDirtyDeleteQ s (DirtyDeleteQ tableName key) = do
     logt $ "handleDirtyDeleteQ starting"
     s' <- do_dirty_delete_q s tableName key
     logt $ "handleDirtyDeleteQ done"
+    reply () s'
+
+handleDirtyDeleteLS :: State -> DirtyDeleteLS -> Process (ProcessReply State ())
+handleDirtyDeleteLS s (DirtyDeleteLS tableName key) = do
+    logt $ "handleDirtyDeleteLS starting"
+    s' <- do_dirty_delete_ls s tableName key
+    logt $ "handleDirtyDeleteLS done"
     reply () s'
 
 handleDirtyWrite :: State -> DirtyWrite -> Process (ProcessReply State ())
@@ -882,12 +916,52 @@ do_dirty_delete_q s tableName keyVal = do
 
 loadTableIntoRamQ :: TableName -> Process [QEntry]
 loadTableIntoRamQ table = do
-  logm $ "loadTableIntoRam:" ++ (show table)
+  logm $ "loadTableIntoRamQ:" ++ (show table)
   ems <- liftIO $ Exception.try $ decodeFileQEntry (tableNameToFileName table)
-  logm $ "loadTableIntoRam:ems=" ++ (show ems)
+  logm $ "loadTableIntoRamQ:ems=" ++ (show ems)
   case ems of
     Left (e :: IOError) -> do
       logm $ "loadTableIntoRamQ:error=" ++ (show e)
+      return []
+    Right ms -> return $ ms
+
+
+-- ---------------------------------------------------------------------
+
+do_dirty_delete_ls :: State -> TableName -> ConsumerName -> Process (State)
+do_dirty_delete_ls s tableName keyVal = do
+  logm $ "dirty_delete_ls:" ++ (show (tableName,keyVal)) -- ,keyVal))
+  -- if we have a ramQ version, delete it from there and then dump the
+  -- whole thing to disk.
+{-
+  vals <- if Map.member tableName (sRamQ s)
+             then return $ (sRamQ s) Map.! tableName
+             else do qes <- loadTableIntoRamQ tableName
+                     return qes
+-}
+  vals <- loadTableIntoRamLS tableName
+  let vals' = filter (\(CM key _ _ _) -> key /= keyVal) vals
+
+  let (TableMeta _s storage _type) = getMetaForTableDefault s tableName
+  let s' = updateTableInfoLS s tableName storage vals'
+
+  case vals' of
+    [] -> return ()
+    _ -> do liftIO $ defaultWrite (tableNameToFileName tableName) (encode $ head vals')
+            mapM_ (\v -> liftIO $ defaultAppend (tableNameToFileName tableName) (encode v)) $ tail vals'
+
+  return s'
+
+-- ---------------------------------------------------------------------
+
+loadTableIntoRamLS :: TableName -> Process [ConsumerMessage]
+loadTableIntoRamLS table = do
+  logm $ "loadTableIntoRamLS:" ++ (show table)
+  ems <- liftIO $ Exception.try $ decodeFileConsumerMessage (tableNameToFileName table)
+  logm $ "loadTableIntoRamLS:ems=" ++ (show ems)
+  case ems of
+    Left (e :: IOError) -> do
+      logm $ "loadTableIntoRamLs:error=" ++ (show e)
       return []
     Right ms -> return $ ms
 

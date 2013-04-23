@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE FlexibleInstances #-}
 module Data.HroqConsumer
   (
     pause
@@ -25,9 +26,11 @@ import Control.Monad(when,replicateM,foldM,liftM3,liftM2,liftM)
 import Data.Binary
 import Data.Hroq
 import Data.HroqApp
+import Data.HroqConsumerTH
 import Data.HroqLogger
 import Data.HroqQueue
 import Data.Maybe
+import Data.Ratio ((%))
 import Data.RefSerialize
 import Data.Time.Clock
 import Data.Typeable hiding (cast)
@@ -37,6 +40,8 @@ import qualified Data.HroqMnesia as HM
 import qualified Data.Map as Map
 
 import qualified System.Remote.Monitoring as EKG
+
+pROCESSING_ERROR_DELAY = picosecondsToNominalDiffTime (2 * 10^12)
 
 --------------------------------------------------------------------------------
 -- API                                                                        --
@@ -72,8 +77,8 @@ resume consumerName = mycast consumerName ConsumerResume
 
 
 -- ConsumerName, AppInfo, SrcQueue, DlqQueue, WorkerModule, WorkerFunc, WorkerParams, State, DoCleanup
-startConsumer :: (ConsumerName,String,QName,QName,ConsumerFunc,String,String,ConsumerState,Bool,EKG.Server) -> Process ProcessId
-startConsumer initParams@(consumerName,_,_,_,_,_,_,_,_,_) = do
+startConsumer :: (ConsumerName,String,QName,QName,ConsumerFuncClosure,AppParams,String,String,ConsumerState,Bool,EKG.Server) -> Process ProcessId
+startConsumer initParams@(consumerName,_,_,_,_,_,_,_,_,_,_) = do
   let server = serverDefinition
   sid <- spawnLocal $ start initParams initFunc server >> return ()
   register (mkRegisteredConsumerName consumerName) sid
@@ -108,15 +113,15 @@ mycast consumerName op = do
 
 -- |Init callback
 -- [ConsumerName, AppInfo, SrcQueue, DlqQueue, WorkerModule, ConsumerFunc, WorkerParams, InfoModule, InfoFunc, State, DoCleanup]
-initFunc :: InitHandler (ConsumerName,String,QName,QName,ConsumerFunc,String,String,ConsumerState,Bool,EKG.Server) State
-initFunc (consumerName,appInfo,srcQueue,dlqQueue,worker,infoModule,infoFunc,state,doCleanup,ekg) = do
+initFunc :: InitHandler (ConsumerName,String,QName,QName,ConsumerFuncClosure,AppParams,String,String,ConsumerState,Bool,EKG.Server) State
+initFunc (consumerName,appInfo,srcQueue,dlqQueue,worker,appParams,infoModule,infoFunc,state,doCleanup,ekg) = do
     logm $ "HroqConsumer:initFunc starting"
 
 
     -- process_flag(trap_exit, true),
 
     -- CPid = self(),
-    cpid <- getSelfPid
+    cPid <- getSelfPid
 
 {-
     F = fun() ->
@@ -124,7 +129,8 @@ initFunc (consumerName,appInfo,srcQueue,dlqQueue,worker,infoModule,infoFunc,stat
     end,
 -}
     -- TODO: populate environment with the other required params
-    f <- unClosure worker
+    -- f <- unClosure worker
+    let f = worker_entry consumerName cPid state appParams
 
     -- ok = mnesia:wait_for_tables([eroq_consumer_local_storage_table], infinity),
     HM.wait_for_tables [hroq_consumer_local_storage_table] Infinity
@@ -197,21 +203,26 @@ instance Binary ConsumerResume where
 
 data ConsumerUpdateCounters = ConsumerUpdateCounters !Integer !Integer !Integer
                               deriving (Typeable,Show)
-xxxxx
+instance Binary ConsumerUpdateCounters where
+  put (ConsumerUpdateCounters c1 c2 c3) = put c1 >> put c2 >> put c3
+  get = liftM3 ConsumerUpdateCounters get get get
+
 -- ---------------------------------------------------------------------
 
-type ConsumerFunc = Closure (Process (Either String ConsumerReply))
+-- type ConsumerFunc = Closure (Process (Either String ConsumerReply))
+type ConsumerFunc = (QEntry -> Process (Either String ConsumerReply))
+type ConsumerFuncClosure = Closure ConsumerFunc
 
-{-
 instance Show ConsumerFunc where
   show _ = "ConsumerFunc"
--}
+
 
 data ConsumerReply = ConsumerReplyOk
-                   | ConsumerReplyOkTimeout !Delay
-                   | ConsumerReplyOkNewParams ![String] !Delay
-                   | ConsumerReplyRetry !Delay
-                   | ConsumerReplyRetryNewParams ![String] !Delay
+                   | ConsumerReplyOkTimeout !NominalDiffTime
+                   | ConsumerReplyOkNewParams !AppParams !NominalDiffTime
+                   | ConsumerReplyRetry !NominalDiffTime
+                   | ConsumerReplyRetryNewParams !AppParams !NominalDiffTime
+                   | ConsumerReplyEmpty -- ^For process_local_storage
                    deriving (Typeable,Show)
 instance Binary ConsumerReply where
   put (ConsumerReplyOk)                 = put 'K'
@@ -219,6 +230,7 @@ instance Binary ConsumerReply where
   put (ConsumerReplyOkNewParams p d)    = put 'P' >> put p >> put d
   put (ConsumerReplyRetry d)            = put 'R' >> put d
   put (ConsumerReplyRetryNewParams p d) = put 'N' >> put p >> put d
+  put (ConsumerReplyEmpty)              = put 'E'
 
   get = do
     sel <- get
@@ -228,6 +240,17 @@ instance Binary ConsumerReply where
       'P' -> liftM2 ConsumerReplyOkNewParams get get
       'R' -> liftM  ConsumerReplyRetry get
       'N' -> liftM2 ConsumerReplyRetryNewParams get get
+      'E' -> return ConsumerReplyOk
+
+instance Binary NominalDiffTime where
+  put ndt = put ((round ndt)::Integer)
+  get = do
+    val <- get
+    return $ picosecondsToNominalDiffTime val
+
+-- | Create a 'DiffTime' from a number of picoseconds.
+picosecondsToNominalDiffTime :: Integer -> NominalDiffTime
+picosecondsToNominalDiffTime x = fromRational (x % 1000000000000)
 
 -- ---------------------------------------------------------------------
 
@@ -272,7 +295,7 @@ data State = State
     , csAppInfo            :: !String
     , csSrcQueue           :: !QName
     , csDlqQueue           :: !QName
-    , csWorker             :: !ConsumerFunc
+    , csWorker             :: !ConsumerFuncClosure
     , csInfoModule         :: !String -- for now
     , csInfoFunc           :: !String -- for now
     , csDoCleanup          :: !Bool
@@ -318,7 +341,7 @@ serverDefinition = defaultProcess {
         , handleCast handleResume
 
         -- Internal worker-to-master comms
-        , handleCase handleUpdateCounters
+        , handleCast handleUpdateCounters
         ]
     , infoHandlers =
         [
@@ -358,11 +381,11 @@ handleResume s ConsumerResume = do
     continue s'
 
 handleUpdateCounters :: State -> ConsumerUpdateCounters -> Process (ProcessAction State)
-handleUpdateCounters s ConsumerResume = do
-    logt $ "handleResume starting"
-    -- s' <- enqueue_one_message q v s
-    let s' = s
-    logt $ "handleResume done"
+handleUpdateCounters s (ConsumerUpdateCounters qe p err) = do
+    logt $ "handleUpdateCounters starting"
+    -- {noreply, StateData#eroq_consumer_state{src_queue_empty_count = QE, processed_count = P, error_count = Err}};
+    let s' = s { csSrcQueueEmptyCount = qe, csProcessedCount = p, csErrorCount = err }
+    logt $ "handleUpdateCounters done"
     continue s'
 
 -- ---------------------------------------------------------------------
@@ -439,52 +462,46 @@ instance Binary GetState where
 -- ---------------------------------------------------------------------
 
 -- process_local_storage(DlqQueue, CName, M, F, A)->
+process_local_storage :: QName -> ConsumerName -> ConsumerFunc
+  -> Process (Either String ConsumerReply)
 process_local_storage dlqQueue cName worker = do
   r <- HM.dirty_read_ls hroq_consumer_local_storage_table cName
   case r of
-    Nothing -> return ReadOpReplyEmpty
+    Nothing -> return $ Right ConsumerReplyEmpty
     Just (CM _ msg _ _) -> do
       rr <- worker msg
       case rr of
         Right (ConsumerReplyOk) -> do
           -- ok = eroq_util:retry_dirty_delete(10, eroq_consumer_local_storage_table, CName);
-          dirty_delete_ls hroq_consumer_local_storage_table cName
+          HM.dirty_delete_ls hroq_consumer_local_storage_table cName
           return rr
         Right (ConsumerReplyOkTimeout timeoutVal) -> do
-          dirty_delete_ls hroq_consumer_local_storage_table cName
+          HM.dirty_delete_ls hroq_consumer_local_storage_table cName
           return rr
         Right (ConsumerReplyOkNewParams newWorkerParams timeoutVal) -> do
-          dirty_delete_ls hroq_consumer_local_storage_table cName
+          HM.dirty_delete_ls hroq_consumer_local_storage_table cName
           return rr
         Right (ConsumerReplyRetry timeoutVal) -> do
-          return timeoutVal
+          return rr
         Right (ConsumerReplyRetryNewParams newWorkerParams timeoutVal) -> do
           return rr
         Left e -> do
           dlq_message msg dlqQueue e
-          dirty_delete_ls hroq_consumer_local_storage_table cName
+          HM.dirty_delete_ls hroq_consumer_local_storage_table cName
           return rr
 
 -- ---------------------------------------------------------------------
--- acquire_and_store_msg(Key, Msg, {CName, SrcQ}) -> ok = eroq_util:retry_dirty_write(10, eroq_consumer_local_storage_table, #eroq_consumer_message{cid=CName, key = Key, msg = Msg, src_queue = SrcQ, timestamp = now()}).
+{-
+dlq_message(Key, Msg, DlqQueue, Reason) ->
+    ERoqDlqMsg = #eroq_dlq_message{reason=Reason, data=Msg},
+    ERoqMsg    = #eroq_message{id=Key, data=ERoqDlqMsg},
+    ok = eroq_queue:enqueue(DlqQueue, ERoqMsg).
+-}
 
-acquire_and_store_msger :: (ConsumerName, QName) -> QEntry -> Process (Either String ())
-acquire_and_store_msger (cName,srcQ) entry = do
-  logm $ "acquire_and_store_msger:undefined" ++ (show (cName,srcQ,entry))
-  ts <- getTimeStamp
-  let msg = CM cName entry srcQ ts
-  HM.dirty_write_ls hroq_consumer_local_storage_table msg
-  return (Right ())
-
-remotable [ 'acquire_and_store_msger
-          -- , 'purger
-          ]
-
-acquire_and_store_msg :: (ConsumerName, QName) -> Closure (QEntry -> Process (Either String ()))
-acquire_and_store_msg params = ( $(mkClosure 'acquire_and_store_msger) params)
--- acquire_and_store_msg = undefined
+dlq_message {- key -} msg dlqQueue reason = undefined
 
 -- ---------------------------------------------------------------------
+
 
 {-
 worker_entry(CName, CPid, EntryState, AppParams) ->
@@ -492,18 +509,18 @@ worker_entry(CName, CPid, EntryState, AppParams) ->
     worker_loop(CName, CPid, EntryState, #wstate{app_params = AppParams}).
 -}
 
-worker_entry :: String -> ProcessId -> ConsumerState -> WorkerState
+worker_entry :: ConsumerName -> ProcessId -> ConsumerState -> AppParams
             -> Process ()
-worker_entry cName cPid entryState wState =
+worker_entry cName cPid entryState appParams =
     -- process_flag(trap_exit, true),
-    worker_loop cName cPid entryState wState
+    worker_loop cName cPid entryState (WorkerState WaitQueue appParams)
 
 
 {-
 worker_loop(CName, CPid, State, #wstate{waiting = Waiting} = WState) when State =/= exit ->
 -}
 
-worker_loop :: String -> ProcessId -> ConsumerState -> WorkerState
+worker_loop :: ConsumerName -> ProcessId -> ConsumerState -> WorkerState
             -> Process ()
 worker_loop _ _ ConsumerExit _ = do return ()
 worker_loop cName cPid state wState = do
@@ -784,26 +801,60 @@ worker_process_message cPid wState = do
 
   wState' <- case instruction of
     InstructionProcessLocal -> do
-      rr <- process_local_storage dlqQueue cName worker
+      w <- unClosure worker
+      rr <- process_local_storage dlqQueue cName w
       case rr of
         Right (ConsumerReplyOk) -> do
             -- gen_server:cast(CPid, {update_counters, QueueEmptyCount, ProcessedCount + 1, ErrorCount}),
-            cast cPid xxxx
+            cast cPid (ConsumerUpdateCounters queueEmptyCount (processedCount+1) errorCount)
             -- WState#wstate{waiting = no};
+            return $ wState { wsWaiting = WaitNo }
+
         Right (ConsumerReplyOkTimeout timeoutVal) -> do
+            -- gen_server:cast(CPid, {update_counters, QueueEmptyCount, ProcessedCount + 1, ErrorCount}),
+            cast cPid (ConsumerUpdateCounters queueEmptyCount (processedCount+1) errorCount)
+            -- WState#wstate{waiting = {resume, now(), TimeoutMs}};
+            now <- liftIO $ getCurrentTime
+            return $ wState { wsWaiting = WaitResume now timeoutVal }
 
         Right (ConsumerReplyOkNewParams newWorkerParams timeoutVal) -> do
+            -- gen_server:cast(CPid, {update_counters, QueueEmptyCount, ProcessedCount + 1, ErrorCount}),
+            cast cPid (ConsumerUpdateCounters queueEmptyCount (processedCount+1) errorCount)
+            -- WState#wstate{waiting = {resume, now(), TimeoutMs}, app_params = NewWorkerParams};
+            now <- liftIO $ getCurrentTime
+            return $ wState { wsWaiting = WaitResume now timeoutVal, wsAppParams = newWorkerParams }
 
         Right (ConsumerReplyRetry timeoutVal) -> do
+            -- WState#wstate{waiting = {resume, now(), TimeoutMs}};
+            now <- liftIO $ getCurrentTime
+            return $ wState { wsWaiting = WaitResume now timeoutVal }
 
         Right (ConsumerReplyRetryNewParams newWorkerParams timeoutVal) -> do
+            -- WState#wstate{waiting = {resume, now(), TimeoutMs}, app_params = NewWorkerParams};
+            now <- liftIO $ getCurrentTime
+            return $ wState { wsWaiting = WaitResume now timeoutVal, wsAppParams = newWorkerParams }
 
         Left e -> do
+            -- gen_server:cast(CPid, {update_counters, QueueEmptyCount, ProcessedCount, ErrorCount + 1}),
+            cast cPid (ConsumerUpdateCounters queueEmptyCount processedCount (errorCount+1))
+            -- WState#wstate{waiting = {resume, now(), ?PROCESSING_ERROR_DELAY_MS}}
+            now <- liftIO $ getCurrentTime
+            return $ wState { wsWaiting = WaitResume now pROCESSING_ERROR_DELAY }
 
     InstructionWaitEmpty -> do
+        -- gen_server:cast(CPid, {update_counters, QueueEmptyCount + 1, ProcessedCount, ErrorCount}),
+        cast cPid (ConsumerUpdateCounters (queueEmptyCount+1) processedCount errorCount)
+        -- WState#wstate{waiting = queue};
+        return $ wState { wsWaiting = WaitQueue }
+
     InstructionSleepError -> do
+        -- gen_server:cast(CPid, {update_counters, QueueEmptyCount, ProcessedCount, ErrorCount + 1}),
+        cast cPid (ConsumerUpdateCounters queueEmptyCount processedCount (errorCount+1))
+        -- WState#wstate{waiting = {resume, now(), ?PROCESSING_ERROR_DELAY_MS}}
+        now <- liftIO $ getCurrentTime
+        return $ wState { wsWaiting = WaitResume now pROCESSING_ERROR_DELAY }
 
-  return wState
+  return wState'
 
-
+-- ---------------------------------------------------------------------
 
