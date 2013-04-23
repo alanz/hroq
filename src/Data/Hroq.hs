@@ -6,7 +6,10 @@ module Data.Hroq
   (
     ConsumerName(..)
   , ConsumerMessage(..)
+  , DlqMessage(..)
+  , Payload(..)
   , QKey(..)
+  , consumerNameKey
   , QValue(..)
   , QEntry(..)
   , QName(..)
@@ -32,7 +35,7 @@ import Control.Distributed.Process.Platform
 import Control.Distributed.Process.Platform.Async
 import Control.Distributed.Process.Platform.ManagedProcess hiding (runProcess)
 import Control.Distributed.Process.Platform.Time
-import Control.Monad(when,replicateM,foldM,liftM4,liftM3,liftM2,liftM)
+import Control.Monad(when,replicateM,foldM,liftM5,liftM4,liftM3,liftM2,liftM)
 import Data.Binary
 import Data.HroqLogger
 import Data.Maybe
@@ -53,7 +56,7 @@ maxBucketSizeConst = 50
 -- ---------------------------------------------------------------------
 
 data ConsumerName = CN !String
-                    deriving (Eq,Show,Typeable)
+                    deriving (Eq,Show,Read,Typeable)
 instance Binary ConsumerName where
   put (CN n) = put n
   get = liftM CN get
@@ -79,19 +82,53 @@ instance Binary QKey where
     i <- get
     return $ QK i
 
+consumerNameKey :: ConsumerName -> QKey
+consumerNameKey (CN s) = QK s
+
+{-
+
+-record(eroq_message,           {id, data}).
+maps on to QEntry
+
+These three map on to QValue
+-record(eroq_consumer_message,  {cid, key, msg, src_queue, timestamp = now()}).
+-record(eroq_dlq_message,       {reason, data}).
+-record(eroq_queue_meta,        {qid, buckets = [], timestamp = now()}).
+
+-}
+
+
 -- ---------------------------------------------------------------------
 
--- data QValue = QV !(Map.Map String String)
-data QValue = QV !String
-              deriving (Typeable,Read,Show,Eq)
+
+data QValue = QVP Payload
+            | QVC ConsumerMessage
+            | QVD DlqMessage
+            | QVM Meta
+            deriving (Typeable,Read,Show,Eq)
+
 data QEntry = QE !QKey    -- ^Id
                  !QValue  -- ^payload
               deriving (Typeable,Read,Show,Eq)
 
 instance Binary QValue where
+  put (QVP m) = put 'P' >> put m
+  put (QVC m) = put 'C' >> put m
+  put (QVD m) = put 'D' >> put m
+  put (QVM m) = put 'M' >> put m
+
+  get = do 
+    sel <- get
+    case sel of
+      'P' -> liftM QVP get
+      'C' -> liftM QVC get
+      'D' -> liftM QVD get
+      'M' -> liftM QVM get
+{-
+instance Binary QValue where
   put (QV v) = put v
   get = liftM QV get
-
+-}
 
 instance Binary QEntry where
   put (QE k v) = put k >> put v
@@ -151,13 +188,29 @@ instance Binary TimeStamp where
 
 -- ---------------------------------------------------------------------
 
+-- data Payload = Payload !(Map.Map String String)
+data Payload = Payload !String
+              deriving (Typeable,Read,Show,Eq)
+instance Binary Payload where
+  put (Payload p) = put p
+  get = liftM Payload get
+
 -- -record(eroq_consumer_message,  {cid, key, msg, src_queue, timestamp = now()}).
 
-data ConsumerMessage = CM ConsumerName QEntry QName TimeStamp
-                       deriving (Show,Typeable,Eq)
+data ConsumerMessage = CM ConsumerName QKey QEntry QName TimeStamp
+                       deriving (Typeable,Read,Show,Eq)
 instance Binary ConsumerMessage where
-  put (CM key val srcQueue ts) = put key >> put val >> put srcQueue >> put ts
-  get = liftM4 CM get get get get
+  put (CM cn key val srcQueue ts) = put cn >> put key >> put val >> put srcQueue >> put ts
+  get = liftM5 CM get get get get get
+
+-- ---------------------------------------------------------------------
+
+data DlqMessage = DM !String !QValue -- ^Reason, original message
+                  deriving (Typeable,Read,Show,Eq)
+
+instance Binary DlqMessage where
+  put (DM reason msg) = put reason >> put msg
+  get = liftM2 DM get get
 
 -- ---------------------------------------------------------------------
 
@@ -174,3 +227,4 @@ getTimeStamp = do
 nullTimeStamp :: TimeStamp
 nullTimeStamp = TS "*notset*"
 
+-- ---------------------------------------------------------------------

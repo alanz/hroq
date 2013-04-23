@@ -465,21 +465,21 @@ instance Binary GetState where
 process_local_storage :: QName -> ConsumerName -> ConsumerFunc
   -> Process (Either String ConsumerReply)
 process_local_storage dlqQueue cName worker = do
-  r <- HM.dirty_read_ls hroq_consumer_local_storage_table cName
+  r <- HM.dirty_read_q hroq_consumer_local_storage_table (consumerNameKey cName)
   case r of
     Nothing -> return $ Right ConsumerReplyEmpty
-    Just (CM _ msg _ _) -> do
+    Just (QE _ (QVC (CM _ _ msg _ _))) -> do
       rr <- worker msg
       case rr of
         Right (ConsumerReplyOk) -> do
           -- ok = eroq_util:retry_dirty_delete(10, eroq_consumer_local_storage_table, CName);
-          HM.dirty_delete_ls hroq_consumer_local_storage_table cName
+          HM.dirty_delete_q hroq_consumer_local_storage_table (consumerNameKey cName)
           return rr
         Right (ConsumerReplyOkTimeout timeoutVal) -> do
-          HM.dirty_delete_ls hroq_consumer_local_storage_table cName
+          HM.dirty_delete_q hroq_consumer_local_storage_table (consumerNameKey cName)
           return rr
         Right (ConsumerReplyOkNewParams newWorkerParams timeoutVal) -> do
-          HM.dirty_delete_ls hroq_consumer_local_storage_table cName
+          HM.dirty_delete_q hroq_consumer_local_storage_table (consumerNameKey cName)
           return rr
         Right (ConsumerReplyRetry timeoutVal) -> do
           return rr
@@ -487,7 +487,7 @@ process_local_storage dlqQueue cName worker = do
           return rr
         Left e -> do
           dlq_message msg dlqQueue e
-          HM.dirty_delete_ls hroq_consumer_local_storage_table cName
+          HM.dirty_delete_q hroq_consumer_local_storage_table (consumerNameKey cName)
           return rr
 
 -- ---------------------------------------------------------------------
@@ -736,7 +736,7 @@ worker_process_message cPid wState = do
     end,
 -}
   firstProcLocalStorage <- do
-    r <- HM.dirty_read_ls hroq_consumer_local_storage_table cName
+    r <- HM.dirty_read_q hroq_consumer_local_storage_table (consumerNameKey cName)
     case r of
       Nothing -> return True
       Just _  -> return False

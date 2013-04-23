@@ -14,12 +14,12 @@ module Data.HroqMnesia
   , dirty_write
   , dirty_write_q
   , dirty_write_q_sid
-  , dirty_write_ls
+  -- , dirty_write_ls
   , dirty_read
   , dirty_read_q
-  , dirty_read_ls
+  -- , dirty_read_ls
   , dirty_delete_q
-  , dirty_delete_ls
+  -- , dirty_delete_ls
   , dirty_all_keys
   , wait_for_tables
 
@@ -94,7 +94,6 @@ directoryPrefix = ".hroqdata/"
 -- /only/ give back a reply for that *specific* request through the use of an
 -- anonymous middle-man (as the sender and reciever in our case).
 
-
 --  , change_table_copy_type
 data ChangeTableCopyType = ChangeTableCopyType !TableName !TableStorage
                            deriving (Typeable, Show)
@@ -135,9 +134,11 @@ data DirtyReadLS = DirtyReadLS !TableName !ConsumerName
 data DirtyDeleteQ = DirtyDeleteQ !TableName !QKey
                    deriving (Typeable, Show)
 
+{-
 --  , dirty_delete_ls
 data DirtyDeleteLS = DirtyDeleteLS !TableName !ConsumerName
                    deriving (Typeable, Show)
+-}
 
 --  , dirty_write
 data DirtyWrite = DirtyWrite !TableName !Meta
@@ -147,10 +148,11 @@ data DirtyWrite = DirtyWrite !TableName !Meta
 data DirtyWriteQ = DirtyWriteQ !TableName !QEntry
                    deriving (Typeable, Show)
 
+{-
 --  , dirty_write_ls
 data DirtyWriteLS = DirtyWriteLS !TableName !ConsumerMessage
                    deriving (Typeable, Show)
-
+-}
 --  , table_info
 data TableInfo = TableInfo !TableName !TableInfoReq
                    deriving (Typeable, Show)
@@ -215,9 +217,11 @@ instance Binary DirtyDeleteQ where
   put (DirtyDeleteQ tn key) = put tn >> put key
   get = liftM2 DirtyDeleteQ get get
 
+{-
 instance Binary DirtyDeleteLS where
   put (DirtyDeleteLS tn key) = put tn >> put key
   get = liftM2 DirtyDeleteLS get get
+-}
 
 instance Binary DirtyWrite where
   put (DirtyWrite tn key) = put tn >> put key
@@ -227,9 +231,11 @@ instance Binary DirtyWriteQ where
   put (DirtyWriteQ tn key) = put tn >> put key
   get = liftM2 DirtyWriteQ get get
 
+{-
 instance Binary DirtyWriteLS where
   put (DirtyWriteLS tn msg) = put tn >> put msg
   get = liftM2 DirtyWriteLS get get 
+-}
 
 instance Binary TableInfo where
   put (TableInfo tn req) = put tn >> put req
@@ -450,14 +456,18 @@ dirty_read tableName key = mycall (DirtyRead tableName key)
 dirty_read_q :: TableName -> QKey -> Process (Maybe QEntry)
 dirty_read_q tableName key = mycall (DirtyReadQ tableName key)
 
+{-
 dirty_read_ls :: TableName -> ConsumerName -> Process (Maybe ConsumerMessage)
 dirty_read_ls tableName key = mycall (DirtyReadLS tableName key)
+-}
 
 dirty_delete_q :: TableName -> QKey -> Process ()
 dirty_delete_q tableName key = mycall (DirtyDeleteQ tableName key)
 
+{-
 dirty_delete_ls :: TableName -> ConsumerName -> Process ()
 dirty_delete_ls tableName key = mycall (DirtyDeleteLS tableName key)
+-}
 
 dirty_write :: TableName -> Meta -> Process ()
 dirty_write tableName val = mycall (DirtyWrite tableName val)
@@ -473,9 +483,10 @@ dirty_write_q tablename val = do
 dirty_write_q_sid :: ProcessId -> TableName -> QEntry -> Process ()
 dirty_write_q_sid sid tablename val = call sid (DirtyWriteQ tablename val)
 
+{-
 dirty_write_ls :: TableName -> ConsumerMessage -> Process ()
 dirty_write_ls tablename val = mycall (DirtyWriteLS tablename val)
-
+-}
 
 table_info :: TableName -> TableInfoReq -> Process TableInfoRsp
 table_info tableName req = mycall (TableInfo tableName req)
@@ -587,12 +598,12 @@ serverDefinition = defaultProcess {
         , handleCall handleDirtyAllKeys
         , handleCall handleDirtyRead
         , handleCall handleDirtyReadQ
-        , handleCall handleDirtyReadLS
+        -- , handleCall handleDirtyReadLS
         , handleCall handleDirtyDeleteQ
-        , handleCall handleDirtyDeleteLS
+        -- , handleCall handleDirtyDeleteLS
         , handleCall handleDirtyWrite
         , handleCall handleDirtyWriteQ
-        , handleCall handleDirtyWriteLS
+        -- , handleCall handleDirtyWriteLS
         , handleCall handleTableInfo
         , handleCall handleWaitForTables
 
@@ -667,12 +678,14 @@ handleDirtyReadQ s (DirtyReadQ tableName key) = do
     logt $ "handleDirtyReadQ done"
     reply res s
 
+{-
 handleDirtyReadLS :: State -> DirtyReadLS -> Process (ProcessReply State (Maybe ConsumerMessage))
 handleDirtyReadLS s (DirtyReadLS consumerName key) = do
     logt $ "handleDirtyReadLS starting"
     res <- do_dirty_read_ls consumerName key
     logt $ "handleDirtyReadLS done"
     reply res s
+-}
 
 handleDirtyDeleteQ :: State -> DirtyDeleteQ -> Process (ProcessReply State ())
 handleDirtyDeleteQ s (DirtyDeleteQ tableName key) = do
@@ -681,12 +694,14 @@ handleDirtyDeleteQ s (DirtyDeleteQ tableName key) = do
     logt $ "handleDirtyDeleteQ done"
     reply () s'
 
+{-
 handleDirtyDeleteLS :: State -> DirtyDeleteLS -> Process (ProcessReply State ())
 handleDirtyDeleteLS s (DirtyDeleteLS tableName key) = do
     logt $ "handleDirtyDeleteLS starting"
     s' <- do_dirty_delete_ls s tableName key
     logt $ "handleDirtyDeleteLS done"
     reply () s'
+-}
 
 handleDirtyWrite :: State -> DirtyWrite -> Process (ProcessReply State ())
 handleDirtyWrite s (DirtyWrite tableName val) = do
@@ -702,13 +717,14 @@ handleDirtyWriteQ s (DirtyWriteQ tableName val) = do
     logt $ "handleDirtyWriteQ done"
     reply () s'
 
+{-
 handleDirtyWriteLS :: State -> DirtyWriteLS -> Process (ProcessReply State ())
 handleDirtyWriteLS s (DirtyWriteLS tableName val) = do
     logt $ "handleDirtyWriteLs starting"
     s' <- do_dirty_write_ls s tableName val
     logt $ "handleDirtyWriteLS done"
     reply () s'
-
+-}
 
 handleTableInfo :: State -> TableInfo -> Process (ProcessReply State TableInfoRsp)
 handleTableInfo s (TableInfo tableName req) = do
@@ -830,6 +846,7 @@ do_dirty_write_q s tableName record = do
   let s' = insertEntryQ s tableName record
   return s'
 
+{-
 do_dirty_write_ls ::
    State -> TableName -> ConsumerMessage -> Process State
 do_dirty_write_ls s tableName record = do
@@ -839,6 +856,7 @@ do_dirty_write_ls s tableName record = do
 
   let s' = insertEntryLS s tableName record
   return s'
+-}
 
 -- ---------------------------------------------------------------------
 
@@ -875,6 +893,7 @@ do_dirty_read_q tableName keyVal = do
 
 -- ---------------------------------------------------------------------
 
+{-
 do_dirty_read_ls :: TableName -> ConsumerName -> Process (Maybe ConsumerMessage)
 do_dirty_read_ls tableName keyVal = do
   logm $ "dirty_read_ls:" ++ (show (tableName)) -- ,keyVal))
@@ -885,10 +904,11 @@ do_dirty_read_ls tableName keyVal = do
       logm $ "do_dirty_read_ls e " ++ (show keyVal) ++ ":" ++ (show e)
       return Nothing
     Right ms -> do
-      let ms' = filter (\(CM key _ _ _) -> key == keyVal) ms
+      let ms' = filter (\(CM _ key _ _ _) -> key == keyVal) ms
       logm $ "do_dirty_read_ls ms' " ++ (show keyVal) ++ ":" ++ (show ms')
       if ms' == [] then return Nothing
                    else return $ Just (head ms')
+-}
 
 -- ---------------------------------------------------------------------
 
@@ -928,6 +948,7 @@ loadTableIntoRamQ table = do
 
 -- ---------------------------------------------------------------------
 
+{-
 do_dirty_delete_ls :: State -> TableName -> ConsumerName -> Process (State)
 do_dirty_delete_ls s tableName keyVal = do
   logm $ "dirty_delete_ls:" ++ (show (tableName,keyVal)) -- ,keyVal))
@@ -940,7 +961,7 @@ do_dirty_delete_ls s tableName keyVal = do
                      return qes
 -}
   vals <- loadTableIntoRamLS tableName
-  let vals' = filter (\(CM key _ _ _) -> key /= keyVal) vals
+  let vals' = filter (\(CM _ key _ _ _) -> key /= keyVal) vals
 
   let (TableMeta _s storage _type) = getMetaForTableDefault s tableName
   let s' = updateTableInfoLS s tableName storage vals'
@@ -951,6 +972,7 @@ do_dirty_delete_ls s tableName keyVal = do
             mapM_ (\v -> liftIO $ defaultAppend (tableNameToFileName tableName) (encode v)) $ tail vals'
 
   return s'
+-}
 
 -- ---------------------------------------------------------------------
 
