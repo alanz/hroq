@@ -16,6 +16,7 @@ module Data.Hroq
   , MetaKey(..)
   , Meta(..)
   , TableName(..)
+  , QueueMessage(..)
   , TimeStamp
   , ioGetTimeStamp
   , getTimeStamp
@@ -211,6 +212,23 @@ data DlqMessage = DM !String !QValue -- ^Reason, original message
 instance Binary DlqMessage where
   put (DM reason msg) = put reason >> put msg
   get = liftM2 DM get get
+
+
+-- ---------------------------------------------------------------------
+
+-- |Signal sent from enqueue to consumer to notify of freshly enqueued
+-- message
+data QueueMessage = QueueMessage
+                     deriving (Typeable,Show)
+
+instance Binary QueueMessage where
+  put QueueMessage = put 'Q'
+  get = do
+    sel <- get
+    case sel of
+      'Q' -> return QueueMessage
+
+
 
 -- ---------------------------------------------------------------------
 

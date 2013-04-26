@@ -205,7 +205,7 @@ getSid qname = do
   return pid
 
 mycall ::
-  (Typeable b, Typeable a, Binary b, Binary a) 
+  (Typeable b, Typeable a, Binary b, Binary a)
   => QName -> a -> Process b
 mycall qname op = do
   sid <- getSid qname
@@ -403,8 +403,15 @@ handleEnqueue s (Enqueue q v) = do
     -- logm $ "enqueue called with:" ++ (show (q,v))
     logt $ "handleEnqueue starting"
     s' <- enqueue_one_message q v s
+
+    -- Notify all waiting processes that a new message has arrived
+
+    logm $ "handleEnqueue notifying subsribers:" ++ (show (qsSubscriberPidDict s))
+    -- [SPid ! {'$eroq_queue', QueueName, NewServerState#eroq_queue_state.total_queue_size} || {SPid, _} <- dict:to_list(SubsPidDict)],
+    mapM_ (\(pid,_ref) -> send pid (QueueMessage)) $ Map.toList $ qsSubscriberPidDict s
+    -- {reply, ok, NewServerState#eroq_queue_state{subscriber_pid_dict = dict:new()}};
     logt $ "handleEnqueue done"
-    reply () s'
+    reply () $ s'  {qsSubscriberPidDict = Map.empty}
 
 handleEnqueueCast :: State -> Enqueue -> Process (ProcessAction State)
 handleEnqueueCast s (Enqueue q v) = do
@@ -555,7 +562,7 @@ handle_call({read, Action}, _From,  #eroq_queue_state{total_queue_size = Qs} = S
     (res,s') <- if qs == 0
       then
         case op of
-          ReadOpDequeue _q worker mpid -> do
+          ReadOpDequeue _q _worker mpid -> do
             case mpid of
               Just pid -> do
                 let subsPidDict = qsSubscriberPidDict s
@@ -566,6 +573,7 @@ handle_call({read, Action}, _From,  #eroq_queue_state{total_queue_size = Qs} = S
                   False -> do
                     monRef <- monitor pid
                     let newSubsPidDics = Map.insert pid monRef subsPidDict
+                    logm $ "HroqQueue.do_read_op:qsSubscriberPidDict=" ++ (show newSubsPidDics)
                     return (ReadOpReplyEmpty,s { qsSubscriberPidDict = newSubsPidDics })
               Nothing ->  do return (ReadOpReplyEmpty,s)
           _ -> do return (ReadOpReplyEmpty,s)

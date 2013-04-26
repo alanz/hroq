@@ -452,17 +452,6 @@ instance Binary ConsumerMsg where
       'E' -> liftM2 ConsumerResumeWait get get
 
 
-data QueueMessage = QueueMessage
-                     deriving (Typeable,Show)
-
-instance Binary QueueMessage where
-  put QueueMessage = put 'Q'
-  get = do
-    sel <- get
-    case sel of
-      'Q' -> return QueueMessage
-
-
 -- |Message sent to Queue Worker to get its state
 data GetState = GetState
                  deriving (Typeable,Show)
@@ -484,6 +473,7 @@ process_local_storage dlqQueue cName worker = do
     Nothing -> return $ Right ConsumerReplyEmpty
     Just (QE _ (QVC (CM _ _ msg _ _))) -> do
       rr <- worker msg
+      logm $ "process_local_storage:rr=" ++ (show rr)
       case rr of
         Right (ConsumerReplyOk) -> do
           -- ok = eroq_util:retry_dirty_delete(10, eroq_consumer_local_storage_table, CName);
@@ -541,26 +531,7 @@ worker_loop _ _ ConsumerExit _ = do return ()
 worker_loop cName cPid state wState = do
   logm $ "HroqConsumer.worker_loop:(cName,cPid,state,wState)=" ++ (show (cName,cPid,state,wState))
   let waiting = wsWaiting wState
-{-
-    RxTimeoutMs =
-    if (State == active) ->
-        case Waiting of
-        no ->
-            0;
-        {resume, T0, SleepTimeMs} ->
-            DiffMs = trunc(timer:now_diff(now(), T0)/1000),
-            if (SleepTimeMs > DiffMs) ->
-                SleepTimeMs - DiffMs;
-            true ->
-                0
-            end;
-        queue ->
-            infinity
-        end;
-    true ->
-        infinity
-    end,
--}
+
   logm $ "HroqConsumer.worker_loop:waiting=" ++ (show waiting)
   rxTimeoutMs <- case state of
     ConsumerActive -> case waiting of
@@ -698,8 +669,12 @@ handleConsumerMsg cPid state wState msg = do
             {paused,N}
         end;
 -}
+
+-- |This handler is activated by a send from enqueue_one_message, once
+-- the new message is enqueued
 handleQueueMessage :: ProcessId -> ConsumerState -> WorkerState -> QueueMessage -> Process (ConsumerState,WorkerState)
 handleQueueMessage cPid state wState msg = do
+  logm $ "HroqConsumer.handleQueueMessage:(cpid,state,wState,msg)=" ++ (show (cPid,state,wState,msg))
   case state of
     ConsumerActive -> do
       if (wsWaiting wState == WaitQueue || wsWaiting wState == WaitNo)

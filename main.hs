@@ -93,9 +93,20 @@ worker ekg = do
   -- mapM_ (\n -> enqueueCast qSidb qNameB (qval $ "bar" ++ (show n))) [1..800]
 
   -- mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..51]
-  mapM_ (\n -> enqueue qNameB (qval $ "bar" ++ (show n))) [1..11]
+  -- mapM_ (\n -> enqueue qNameB (qval $ "bar" ++ (show n))) [1..11]
 
-  logm "enqueue done b"
+  liftIO $ threadDelay (5*1000000) -- 1 seconds
+  logm "enqueue done b starting"
+  mapM_ (\n -> enqueue qNameB (qval $ "bar" ++ (show n))) [1..1]
+  logm "enqueue done b 1"
+
+  liftIO $ threadDelay (1*1000000) -- 1 seconds
+  mapM_ (\n -> enqueue qNameB (qval $ "bar" ++ (show n))) [2..2]
+  logm "enqueue done b 2"
+
+  liftIO $ threadDelay (1*1000000) -- 1 seconds
+  mapM_ (\n -> enqueue qNameB (qval $ "bar" ++ (show n))) [3..3]
+  logm "enqueue done b 3"
 
   -- mapM_ (\n -> enqueue qSida qNameA (qval $ "aaa" ++ (show n))) [1..8]
   -- logm "enqueue done a"
@@ -177,9 +188,19 @@ startConsumer :: (ConsumerName,String,QName,QName,ConsumerFuncClosure,AppParams,
   -- mapM_ (\n -> enqueueCast qSidb qNameB (qval $ "bar" ++ (show n))) [1..800]
 
   -- mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..51]
-  mapM_ (\n -> enqueue (QN "SLAP") (qval $ "bar" ++ (show n))) [1..11]
 
-  logm "enqueue done SLAP"
+  liftIO $ threadDelay (5*1000000) 
+  logm "enqueue starting SLAP"
+  mapM_ (\n -> enqueue (QN "SLAP") (qval $ "bar" ++ (show n))) [1..1]
+  logm "enqueue done SLAP 1"
+
+  liftIO $ threadDelay (3*1000000) 
+  mapM_ (\n -> enqueue (QN "SLAP") (qval $ "bar" ++ (show n))) [2..2]
+  logm "enqueue done SLAP 2"
+
+  liftIO $ threadDelay (3*1000000) 
+  mapM_ (\n -> enqueue (QN "SLAP") (qval $ "bar" ++ (show n))) [3..3]
+  logm "enqueue done SLAP 3"
 
   liftIO $ threadDelay (1*1000000) -- 1 seconds
 

@@ -50,6 +50,7 @@ import Control.Distributed.Process.Platform
 import Control.Distributed.Process.Platform.Async
 import Control.Distributed.Process.Platform.ManagedProcess hiding (runProcess)
 import Control.Distributed.Process.Platform.Time
+-- import Control.Exception
 import Control.Exception as Exception
 import Control.Monad(when,replicateM,foldM,liftM4,liftM3,liftM2,liftM)
 import Data.Binary
@@ -57,21 +58,21 @@ import Data.Binary.Get
 import Data.DeriveTH
 import Data.Hroq
 import Data.HroqLogger
-import Data.Int
 import Data.IORef
+import Data.Int
 import Data.List(elemIndices,isInfixOf,(\\))
 import Data.Maybe(fromJust,fromMaybe,isNothing)
 import Data.RefSerialize
 import Data.Typeable (Typeable)
 import Data.Word
--- import Network.Transport.TCP (createTransportExposeInternals, defaultTCPParameters)
+import Prelude hiding (catch)
 import System.Directory
 import System.IO
-import System.IO.Error
+import System.IO.Error hiding (catch)
 import System.IO.Unsafe
+import qualified Data.ByteString.Lazy as L
 import qualified Data.ByteString.Lazy.Char8 as B
 import qualified Data.Map as Map
-import qualified Data.ByteString.Lazy as L
 
 import qualified System.Remote.Monitoring as EKG
 
@@ -926,7 +927,9 @@ do_dirty_delete_q s tableName keyVal = do
   let s' = updateTableInfoQ s tableName storage vals'
 
   case vals' of
-    [] -> return ()
+    [] -> do
+            liftIO $ removeIfExists (tableNameToFileName tableName)
+            return () 
     _ -> do liftIO $ defaultWrite (tableNameToFileName tableName) (encode $ head vals')
             mapM_ (\v -> liftIO $ defaultAppend (tableNameToFileName tableName) (encode v)) $ tail vals'
   logm $ "dirty_delete_q:done"
@@ -1280,3 +1283,13 @@ readFileStrict f = openFile f ReadMode >>= \ h -> readIt h `finally` hClose h
 strictify :: (Map.Map TableName [QEntry]) -> (Map.Map TableName [QEntry])
 strictify m = Map.fromList $ Map.empty `seq` Map.toList m
 
+
+-- ---------------------------------------------------------------------
+
+
+-- From http://stackoverflow.com/questions/8502201/remove-file-if-it-exists-in-haskell
+removeIfExists :: FilePath -> IO ()
+removeIfExists fileName = removeFile fileName `Exception.catch` handleExists
+  where handleExists e
+          | isDoesNotExistError e = return ()
+          | otherwise = throwIO e
