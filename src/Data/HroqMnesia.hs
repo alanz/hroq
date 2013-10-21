@@ -502,7 +502,8 @@ log_state = mycall (LogState)
 startHroqMnesia :: EKG.Server -> Process ProcessId
 startHroqMnesia initParams = do
   let server = serverDefinition
-  sid <- spawnLocal $ start initParams initFunc server >> return ()
+  -- sid <- spawnLocal $ start initParams initFunc server >> return ()
+  sid <- spawnLocal $ serve initParams initFunc server >> return ()
   register hroqMnesiaName sid
   return sid
 
@@ -616,63 +617,63 @@ serverDefinition = defaultProcess {
         -- handleInfo_ (\(ProcessMonitorNotification _ _ r) -> logm $ show r >> continue_)
          handleInfo (\dict (ProcessMonitorNotification _ _ r) -> do {logm $ show r; continue dict })
         ]
-     , timeoutHandler = \_ _ -> stop $ TerminateOther "timeout az"
-     , terminateHandler = \_ reason -> do { logm $ "HroqMnesia terminateHandler:" ++ (show reason) }
+     , timeoutHandler = \_ _ -> stop $ ExitOther "timeout az"
+     , shutdownHandler = \_ reason -> do { logm $ "HroqMnesia terminateHandler:" ++ (show reason) }
     } :: ProcessDefinition State
 
 -- ---------------------------------------------------------------------
 -- Handlers
 
-handleChangeTableCopyType :: State -> ChangeTableCopyType -> Process (ProcessReply State ())
+handleChangeTableCopyType :: State -> ChangeTableCopyType -> Process (ProcessReply () State)
 handleChangeTableCopyType s (ChangeTableCopyType tableName storage) = do
     logt $ "handleChangeTableCopyType starting"
     s' <- do_change_table_copy_type s tableName storage
     logt $ "handleChangeTableCopyType done"
     reply () s'
 
-handleCreateTable :: State -> CreateTable -> Process (ProcessReply State ())
+handleCreateTable :: State -> CreateTable -> Process (ProcessReply () State)
 handleCreateTable s (CreateTable storage tableName recordType) = do
     logt $ "handleCreateTable starting"
     s' <- do_create_table s storage tableName recordType
     logt $ "handleCreateTable done"
     reply () s'
 
-handleDeleteTable :: State -> DeleteTable -> Process (ProcessReply State ())
+handleDeleteTable :: State -> DeleteTable -> Process (ProcessReply () State)
 handleDeleteTable s (DeleteTable tableName) = do
     logt $ "handleDeleteTable starting"
     s' <- do_delete_table s tableName
     logt $ "handleDeleteTable done"
     reply () s'
 
-handleCreateSchema :: State -> CreateSchema -> Process (ProcessReply State ())
+handleCreateSchema :: State -> CreateSchema -> Process (ProcessReply () State)
 handleCreateSchema s (CreateSchema) = do
     logt $ "handleCreateSchema starting"
     s' <- do_create_schema s
     logt $ "handleCreateSchema done"
     reply () s'
 
-handleDeleteSchema :: State -> DeleteSchema -> Process (ProcessReply State ())
+handleDeleteSchema :: State -> DeleteSchema -> Process (ProcessReply () State)
 handleDeleteSchema s _ = do
     logt $ "handleDeleteSchema starting"
     s' <- do_delete_schema s
     logt $ "handleDeleteSchema done"
     reply () s'
 
-handleDirtyAllKeys :: State -> DirtyAllKeys -> Process (ProcessReply State [QKey])
+handleDirtyAllKeys :: State -> DirtyAllKeys -> Process (ProcessReply [QKey] State)
 handleDirtyAllKeys s (DirtyAllKeys tableName) = do
     logt $ "handleDirtyAllKeys starting"
     res <- do_dirty_all_keys tableName
     logt $ "handleDirtyAllKeys done"
     reply res s
 
-handleDirtyRead :: State -> DirtyRead -> Process (ProcessReply State (Maybe Meta))
+handleDirtyRead :: State -> DirtyRead -> Process (ProcessReply (Maybe Meta) State)
 handleDirtyRead s (DirtyRead tableName key) = do
     logt $ "handleDirtyRead starting"
     res <- do_dirty_read tableName key
     logt $ "handleDirtyRead done"
     reply res s
 
-handleDirtyReadQ :: State -> DirtyReadQ -> Process (ProcessReply State (Maybe QEntry))
+handleDirtyReadQ :: State -> DirtyReadQ -> Process (ProcessReply (Maybe QEntry) State)
 handleDirtyReadQ s (DirtyReadQ tableName key) = do
     logt $ "handleDirtyReadQ starting"
     res <- do_dirty_read_q tableName key
@@ -680,7 +681,7 @@ handleDirtyReadQ s (DirtyReadQ tableName key) = do
     reply res s
 
 {-
-handleDirtyReadLS :: State -> DirtyReadLS -> Process (ProcessReply State (Maybe ConsumerMessage))
+handleDirtyReadLS :: State -> DirtyReadLS -> Process (ProcessReply (Maybe ConsumerMessage) State)
 handleDirtyReadLS s (DirtyReadLS consumerName key) = do
     logt $ "handleDirtyReadLS starting"
     res <- do_dirty_read_ls consumerName key
@@ -688,7 +689,7 @@ handleDirtyReadLS s (DirtyReadLS consumerName key) = do
     reply res s
 -}
 
-handleDirtyDeleteQ :: State -> DirtyDeleteQ -> Process (ProcessReply State ())
+handleDirtyDeleteQ :: State -> DirtyDeleteQ -> Process (ProcessReply () State)
 handleDirtyDeleteQ s (DirtyDeleteQ tableName key) = do
     logt $ "handleDirtyDeleteQ starting"
     s' <- do_dirty_delete_q s tableName key
@@ -696,7 +697,7 @@ handleDirtyDeleteQ s (DirtyDeleteQ tableName key) = do
     reply () s'
 
 {-
-handleDirtyDeleteLS :: State -> DirtyDeleteLS -> Process (ProcessReply State ())
+handleDirtyDeleteLS :: State -> DirtyDeleteLS -> Process (ProcessReply () State)
 handleDirtyDeleteLS s (DirtyDeleteLS tableName key) = do
     logt $ "handleDirtyDeleteLS starting"
     s' <- do_dirty_delete_ls s tableName key
@@ -704,14 +705,14 @@ handleDirtyDeleteLS s (DirtyDeleteLS tableName key) = do
     reply () s'
 -}
 
-handleDirtyWrite :: State -> DirtyWrite -> Process (ProcessReply State ())
+handleDirtyWrite :: State -> DirtyWrite -> Process (ProcessReply () State)
 handleDirtyWrite s (DirtyWrite tableName val) = do
     logt $ "handleDirtyWrite starting"
     s' <- do_dirty_write s tableName val
     logt $ "handleDirtyWrite done"
     reply () s'
 
-handleDirtyWriteQ :: State -> DirtyWriteQ -> Process (ProcessReply State ())
+handleDirtyWriteQ :: State -> DirtyWriteQ -> Process (ProcessReply () State)
 handleDirtyWriteQ s (DirtyWriteQ tableName val) = do
     logt $ "handleDirtyWriteQ starting"
     s' <- do_dirty_write_q s tableName val
@@ -719,7 +720,7 @@ handleDirtyWriteQ s (DirtyWriteQ tableName val) = do
     reply () s'
 
 {-
-handleDirtyWriteLS :: State -> DirtyWriteLS -> Process (ProcessReply State ())
+handleDirtyWriteLS :: State -> DirtyWriteLS -> Process (ProcessReply () State)
 handleDirtyWriteLS s (DirtyWriteLS tableName val) = do
     logt $ "handleDirtyWriteLs starting"
     s' <- do_dirty_write_ls s tableName val
@@ -727,21 +728,21 @@ handleDirtyWriteLS s (DirtyWriteLS tableName val) = do
     reply () s'
 -}
 
-handleTableInfo :: State -> TableInfo -> Process (ProcessReply State TableInfoRsp)
+handleTableInfo :: State -> TableInfo -> Process (ProcessReply TableInfoRsp State)
 handleTableInfo s (TableInfo tableName req) = do
     logt $ "handleTableInfo starting"
     (s',res) <- do_table_info s tableName req
     logt $ "handleTableInfo done"
     reply res s'
 
-handleWaitForTables :: State -> WaitForTables -> Process (ProcessReply State ())
+handleWaitForTables :: State -> WaitForTables -> Process (ProcessReply () State)
 handleWaitForTables s (WaitForTables tables delay) = do
     logt $ "handleWaitForTables starting"
     s' <- do_wait_for_tables s tables delay
     logt $ "handleWaitForTables done"
     reply () s'
 
-handleLogState :: State -> LogState -> Process (ProcessReply State ())
+handleLogState :: State -> LogState -> Process (ProcessReply () State)
 handleLogState s _ = do
   logm $ "HroqMnesia:current state:" ++ (show s)
   reply () s

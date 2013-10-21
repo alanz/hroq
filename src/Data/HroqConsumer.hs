@@ -87,7 +87,7 @@ get_state pid = call pid GetState
 startConsumer :: (ConsumerName,String,QName,QName,ConsumerFuncClosure,AppParams,String,String,ConsumerState,Bool,EKG.Server) -> Process ProcessId
 startConsumer initParams@(consumerName,_,_,_,_,_,_,_,_,_,_) = do
   let server = serverDefinition
-  sid <- spawnLocal $ start initParams initFunc server >> return ()
+  sid <- spawnLocal $ serve initParams initFunc server >> return ()
   register (mkRegisteredConsumerName consumerName) sid
   return sid
 
@@ -357,8 +357,8 @@ serverDefinition = defaultProcess {
         -- handleInfo_ (\(ProcessMonitorNotification _ _ r) -> logm $ show r >> continue_)
          handleInfo (\dict (ProcessMonitorNotification _ _ r) -> do {logm $ show r; continue dict })
         ]
-     , timeoutHandler = \_ _ -> stop $ TerminateOther "timeout az"
-     , terminateHandler = \_ reason -> do { logm $ "HroqConsumer terminateHandler:" ++ (show reason) }
+     , timeoutHandler = \_ _ -> stop $ ExitOther "timeout az"
+     , shutdownHandler = \_ reason -> do { logm $ "HroqConsumer terminateHandler:" ++ (show reason) }
     } :: ProcessDefinition State
 
 
@@ -641,11 +641,13 @@ handleConsumerMsg cPid state wState msg = do
     ConsumerMsgResume -> return (ConsumerActive,wState)
     ConsumerParams p  -> return (state, wState {wsAppParams = p})
     ConsumerPauseWait pid ref -> do
-      send pid (PauseWaitRsp ref)
+      -- send pid (PauseWaitRsp ref)
+      sendTo pid (PauseWaitRsp ref)
       return (ConsumerPaused,wState)
     ConsumerResumeWait pid ref -> do
       n <- worker_process_message cPid wState
-      send pid (ResumeWaitRsp ref)
+      -- send pid (ResumeWaitRsp ref)
+      sendTo pid (ResumeWaitRsp ref)
       return (ConsumerActive,n)
 
 

@@ -21,7 +21,7 @@ module Data.HroqQueue
 
 import Control.Distributed.Process hiding (call)
 import Control.Distributed.Process.Node
-import Control.Distributed.Process.Platform
+import Control.Distributed.Process.Platform hiding (monitor)
 import Control.Distributed.Process.Platform.Async
 import Control.Distributed.Process.Platform.ManagedProcess hiding (runProcess)
 import Control.Distributed.Process.Platform.Time
@@ -69,7 +69,7 @@ peek q = mycall q (ReadOpPeek q)
 startQueue :: (QName,String,CleanupFunc,EKG.Server) -> Process ProcessId
 startQueue initParams@(qname,_,_,_) = do
   let server = serverDefinition
-  sid <- spawnLocal $ start initParams initFunc server >> return ()
+  sid <- spawnLocal $ serve initParams initFunc server >> return ()
   register (mkRegisteredQName qname) sid
   return sid
 
@@ -384,11 +384,11 @@ serverDefinition = defaultProcess {
         -- handleInfo_ (\(ProcessMonitorNotification _ _ r) -> logm $ show r >> continue_)
          handleInfo (\dict (ProcessMonitorNotification _ _ r) -> do {logm $ show r; continue dict })
         ]
-     , timeoutHandler = \_ _ -> stop $ TerminateOther "timeout az"
-     , terminateHandler = \_ reason -> do { logm $ "HroqQueue terminateHandler:" ++ (show reason) }
+     , timeoutHandler = \_ _ -> stop $ ExitOther "timeout az"
+     , shutdownHandler = \_ reason -> do { logm $ "HroqQueue terminateHandler:" ++ (show reason) }
     } :: ProcessDefinition State
 
-handleReadOp :: State -> ReadOp -> Process (ProcessReply State ReadOpReply)
+handleReadOp :: State -> ReadOp -> Process (ProcessReply ReadOpReply State)
 handleReadOp s readOp = do
     -- {(logm "dequeuing") ; reply () (s) }
     logt $ "handleReadOp starting"
@@ -398,7 +398,7 @@ handleReadOp s readOp = do
 
 
 -- Note: the handlers match on type signature
-handleEnqueue :: State -> Enqueue -> Process (ProcessReply State ())
+handleEnqueue :: State -> Enqueue -> Process (ProcessReply () State)
 handleEnqueue s (Enqueue q v) = do
     -- logm $ "enqueue called with:" ++ (show (q,v))
     logt $ "handleEnqueue starting"
@@ -408,7 +408,8 @@ handleEnqueue s (Enqueue q v) = do
 
     logm $ "handleEnqueue notifying subsribers:" ++ (show (qsSubscriberPidDict s))
     -- [SPid ! {'$eroq_queue', QueueName, NewServerState#eroq_queue_state.total_queue_size} || {SPid, _} <- dict:to_list(SubsPidDict)],
-    mapM_ (\(pid,_ref) -> send pid (QueueMessage)) $ Map.toList $ qsSubscriberPidDict s
+    -- mapM_ (\(pid,_ref) -> send pid (QueueMessage)) $ Map.toList $ qsSubscriberPidDict s
+    mapM_ (\(pid,_ref) -> sendTo pid (QueueMessage)) $ Map.toList $ qsSubscriberPidDict s
     -- {reply, ok, NewServerState#eroq_queue_state{subscriber_pid_dict = dict:new()}};
     logt $ "handleEnqueue done"
     reply () $ s'  {qsSubscriberPidDict = Map.empty}
