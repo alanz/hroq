@@ -266,7 +266,7 @@ initFunc (queueName,appInfo,doCleanup,ekg) = do
              }
 
 
-    -- eroq_groups:join(QueueName, ?MODULE),                
+    -- eroq_groups:join(QueueName, ?MODULE),
     join queueName "HroqQueue"
     logm $ "HroqQueue:initFunc 6"
 

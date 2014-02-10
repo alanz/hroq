@@ -15,7 +15,7 @@ cabal-version:       >=1.8
 
 
 -- library
---   exposed-modules:    Data.Hroq 
+--   exposed-modules:    Data.Hroq
 --   -- other-modules:       
 --   hs-source-dirs: . ./src
 --   ghc-options:
@@ -55,7 +55,7 @@ executable hroq
                        , distributed-process-platform
                        -- , distributed-process-simplelocalnet
                        , distributed-static
-                       -- , binary 
+                       -- , binary
                        , binary >= 0.6.3.0 && < 0.8
                        , bytestring
                        , containers
@@ -71,6 +71,16 @@ executable hroq
                        , hslogger
                        , old-locale
 
+test-suite Tests
+  type:                exitcode-stdio-1.0
+  x-uses-tf:           true
+  build-depends:       base >= 4
+                       , hspec
+  hs-source-dirs:
+                   tests
+  ghc-options:     -Wall -threaded -rtsopts -with-rtsopts=-N
+  -- extensions:      CPP
+  main-is:         Spec.hs
 
 source-repository head
     type: git

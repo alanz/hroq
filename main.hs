@@ -42,11 +42,11 @@ main = do
   node <- startLocalNode
 
   -- runProcess node (worker ekg)
-  runProcess node (worker_consumer ekg)
-  -- runProcess node worker_mnesia
+  -- runProcess node (worker_consumer ekg)
+  runProcess node (worker_mnesia ekg)
 
   closeLocalNode node
-  
+
   return ()
 
 -- ---------------------------------------------------------------------
@@ -191,15 +191,15 @@ startConsumer :: (ConsumerName,String,QName,QName,ConsumerFuncClosure,AppParams,
 
   liftIO $ threadDelay (5*1000000) 
   logm "enqueue starting SLAP"
-  mapM_ (\n -> enqueue (QN "SLAP") (qval $ "bar" ++ (show n))) [1..1]
+  mapM_ (\n -> enqueue (QN "SLAP") (qval $ "bar" ++ (show n))) [1..8000]
   logm "enqueue done SLAP 1"
 
   liftIO $ threadDelay (3*1000000) 
-  mapM_ (\n -> enqueue (QN "SLAP") (qval $ "bar" ++ (show n))) [2..2]
+  mapM_ (\n -> enqueue (QN "SLAP") (qval $ "baz" ++ (show n))) [1..8000]
   logm "enqueue done SLAP 2"
 
   liftIO $ threadDelay (3*1000000) 
-  mapM_ (\n -> enqueue (QN "SLAP") (qval $ "bar" ++ (show n))) [3..3]
+  mapM_ (\n -> enqueue (QN "SLAP") (qval $ "bat" ++ (show n))) [1..8000]
   logm "enqueue done SLAP 3"
 
   liftIO $ threadDelay (1*1000000) -- 1 seconds
@@ -231,7 +231,7 @@ worker_mnesia ekg = do
 
   let qe = QE (QK "a") (qval $ "bar2")
   let s =   (MnesiaState Map.empty Map.empty Map.empty)
-  mapM_ (\n -> dirty_write_q table (QE (QK "a") (qval $ "bar" ++ (show n)))) [1..800]
+  mapM_ (\n -> dirty_write_q table (QE (QK "a") (qval $ "bar" ++ (show n)))) [1..80000]
   -- mapM_ (\n -> dirty_write_q table qe) [1..800]
   -- mapM_ (\n -> do_dirty_write_q s table qe) [1..800]
 
