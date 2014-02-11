@@ -1,28 +1,41 @@
+{-# LANGUAGE TemplateHaskell     #-}
 module Data.HroqSup
   (
   hroq_start_link
   )
   where
 
+import Control.Concurrent
 import Control.Distributed.Process hiding (call)
+import Control.Distributed.Process.Closure
 import Control.Distributed.Process.Node
 import Control.Distributed.Process.Platform
 import Control.Distributed.Process.Platform.Async
 import Control.Distributed.Process.Platform.ManagedProcess hiding (runProcess)
+import Control.Distributed.Process.Platform.Supervisor
 import Control.Distributed.Process.Platform.Time
-import Control.Concurrent
 import Data.Binary
-import Data.Maybe
+import Data.HroqAlarmServer
+import Data.HroqGroups
+import Data.HroqLogDumper
 import Data.HroqLogger
+import Data.HroqStatsGatherer
+import Data.HroqQueueWatchServer
+import Data.Maybe
 import Data.RefSerialize
 import Data.Typeable
-import qualified Data.Map as Map
 import qualified Data.ByteString.Lazy.Char8 as C8
+import qualified Data.Map as Map
 
 -- ---------------------------------------------------------------------
 
+hroq_start_link :: a -> b -> Process ProcessId
 hroq_start_link alarmFun qwFun = do
-  logm "hroq_start_link undefined"
+  logm "hroq_start_link starting"
+  pid <- start restartStrategy (childSpec alarmFun qwFun)
+  logm "hroq_start_link started"
+  return pid
+
 
   -- For now, start each designated process via code, move to
   -- supervisor later (when it exists)
@@ -71,3 +84,40 @@ init([AlarmFun, QueueWatchFun]) ->
     {ok, {RestartSpec, [ERoqStatsGather, ERoqLogDumper, ERoqGroups, ERoqAlarms, ERoqQueueWatch]}}.
 
 -}
+
+
+-- ----------------------------------------------------------------------
+
+-- childSpec :: [ChildSpec]
+childSpec alarmFun queueWatchFun = 
+    [
+      defaultWorker hroqStatsGatherer
+    -- , defaultWorker hroq_log_dumper
+    -- , defaultWorker hroq_groups
+    -- , defaultWorker (hroq_alarms alarmFun)
+    -- , defaultWorker (hroq_queue_watch_server queueWatchFun)
+    ]
+  where
+    hroqStatsGatherer = RunClosure hroq_stats_gatherer_closure
+
+defaultWorker :: ChildStart -> ChildSpec
+defaultWorker clj =
+  ChildSpec
+  {
+    childKey     = ""
+  , childType    = Worker
+  , childRestart = Permanent
+  , childStop    = TerminateTimeout (Delay $ milliSeconds 5000)
+  , childStart   = clj
+  , childRegName = Nothing
+  }
+
+-- ---------------------------------------------------------------------
+
+restartStrategy :: RestartStrategy
+restartStrategy = -- restartAll
+   RestartAll {intensity = RestartLimit {maxR = maxRestarts 1,
+                                         maxT = seconds 60},
+               mode = RestartInOrder {order = LeftToRight}}
+
+

@@ -4,7 +4,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 
--- import Control.Distributed.Process.Backend.SimpleLocalnet
 import Control.Concurrent
 import Control.Distributed.Process hiding (call)
 import Control.Distributed.Process.Closure
@@ -12,7 +11,9 @@ import Control.Distributed.Process.Node
 import Control.Distributed.Process.Platform
 import Control.Distributed.Process.Platform.ManagedProcess hiding (runProcess)
 import Control.Distributed.Process.Platform.Time
+import Control.Distributed.Process.Platform.Timer
 import Control.Distributed.Static (staticLabel, staticClosure)
+import Control.Monad
 import Data.Binary
 import Data.DeriveTH
 import Data.Hroq
@@ -24,6 +25,8 @@ import Data.HroqMnesia
 import Data.HroqQueue
 import Data.HroqQueueMeta
 import Data.HroqSampleWorker
+import Data.HroqStatsGatherer
+import Data.HroqSup
 import Data.Maybe
 import Data.RefSerialize
 import Data.Typeable (Typeable)
@@ -43,10 +46,28 @@ main = do
 
   -- runProcess node (worker ekg)
   -- runProcess node (worker_consumer ekg)
-  runProcess node (worker_mnesia ekg)
+  -- runProcess node (worker_mnesia ekg)
+
+  runProcess node worker_supervised
 
   closeLocalNode node
 
+  return ()
+
+-- ---------------------------------------------------------------------
+
+worker_supervised :: Process ()
+worker_supervised = do
+  logm "worker_supervised starting"
+  pid <- hroq_start_link undefined undefined
+  -- pid <- spawnLocal $ hroq_stats_gatherer
+
+  logm $ "worker_supervised started:pid=" ++ show pid
+  sleepFor 2 Seconds
+  ping
+  sleepFor 5 Seconds
+  logm "worker_supervised done"
+  
   return ()
 
 -- ---------------------------------------------------------------------
@@ -283,6 +304,7 @@ startLocalNode = do
            $ Data.HroqConsumerTH.__remoteTable
            $ Data.HroqDlqWorkers.__remoteTable 
            $ Data.HroqSampleWorker.__remoteTable
+           $ Data.HroqStatsGatherer.__remoteTable
            $ initRemoteTable
   
 

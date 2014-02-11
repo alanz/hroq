@@ -113,7 +113,8 @@ start_app = do
     -- QWFun    = get_callback(queue_watch_callback),
     let qwFun = get_callback "queue_watch_callback"
     -- eroq_sup:start_link(AlarmFun, QWFun).
-    hroq_start_link alarmFun qwFun
+    supPid <- hroq_start_link alarmFun qwFun
+    return ()
 
 
 -- ---------------------------------------------------------------------
@@ -180,6 +181,13 @@ get_callback(CBName) ->
         fun (_P) -> ok end
     end.
 -}
-get_callback cbname = do
-  logm $ "get_callback undefined:" ++ (show cbname)
-
+get_callback "alarms_callback" = f
+  where
+    f = do
+      logm $ "get_callback undefined:alarms_callback"
+get_callback "queue_watch_callback" = f
+  where
+    f = do
+      logm $ "get_callback undefined:queue_watch_callback"
+get_callback unk = do
+      logm $ "get_callback undefined:" ++ show unk

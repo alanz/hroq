@@ -271,7 +271,7 @@ initFunc (queueName,appInfo,doCleanup,ekg) = do
     logm $ "HroqQueue:initFunc 6"
 
     -- catch(eroq_stats_gatherer:publish_queue_stats(QueueName, {AppInfo, QueueSize, 0, 0})),
-    publish_queue_stats queueName (appInfo, queueSize, 0, 0)
+    publish_queue_stats queueName (QStats appInfo queueSize 0 0)
 
     logm $ "HroqQueue:initFunc ending"
 
@@ -511,7 +511,7 @@ enqueue_one_message queueName v s = do
                             , qsEnqueueCount       = newEnqueueCount
                             }
 
-  publish_queue_stats queueName (appInfo,newTotalQueuedMsg,newEnqueueCount,dequeueCount)
+  publish_queue_stats queueName (QStats appInfo newTotalQueuedMsg newEnqueueCount dequeueCount)
 
   return s'
 
@@ -642,7 +642,7 @@ handle_call({read, Action}, _From,  #eroq_queue_state{total_queue_size = Qs} = S
                           return (nextBucket, sort indexList)
                     _ -> do return (procBucket,t)
 
-                publish_queue_stats queueName (appInfo,newTotalQueuedMsg,enqueueCount,newDequeueCount)
+                publish_queue_stats queueName (QStats appInfo newTotalQueuedMsg enqueueCount newDequeueCount)
 
                 let s' = s { qsCurrProcBucket = newProcBucket
                            , qsIndexList      = newIndexList

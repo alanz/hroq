@@ -1,6 +1,7 @@
 module Data.HroqGroups
   (
     join
+  , hroq_groups
   )
   where
 
@@ -21,6 +22,10 @@ import Data.HroqLogger
 import Data.RefSerialize
 -- import Data.TCache
 import Data.Typeable
+
+-- ---------------------------------------------------------------------
+
+hroq_groups = error $ "hroq_groups undefined"
 
 -- ---------------------------------------------------------------------
 
