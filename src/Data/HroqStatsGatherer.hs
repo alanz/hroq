@@ -7,6 +7,7 @@ module Data.HroqStatsGatherer
   , hroq_stats_gatherer
   , ping
   , hroq_stats_gatherer_closure
+  , hroqStatsGathererProcessName
   , __remoteTable
 
   , QStats(..)
@@ -63,11 +64,7 @@ type State = Integer
 -- ---------------------------------------------------------------------
 
 hroq_stats_gatherer :: Process ()
-hroq_stats_gatherer = do
-  logm $ "hroq_stats_gatherer about to start"
-  pid <- start_stats_gatherer
-  logm $ "hroq_stats_gatherer started:pid=" ++ show pid
-
+hroq_stats_gatherer = start_stats_gatherer
 
 --------------------------------------------------------------------------------
 -- API                                                                        --
@@ -106,11 +103,15 @@ get_consumer_stats(ConsName) ->
 
 getServerPid :: Process ProcessId
 getServerPid = do
-  -- deliberately blow up if not registered
-  Just pid <- whereis processName
-  return pid
+  mpid <- whereis hroqStatsGathererProcessName
+  case mpid of
+    Just pid -> return pid
+    Nothing -> do
+      logm "HroqStatsGatherer:getServerPid failed"
+      error "blow up"
 
-processName = "HroqStatsGatherer"
+hroqStatsGathererProcessName :: String
+hroqStatsGathererProcessName = "HroqStatsGatherer"
 
 {-
 init_state() -> #state{}.
@@ -122,12 +123,8 @@ init(_) ->
     {ok, init_state()}.
 
 -}
-start_stats_gatherer :: Process ProcessId
-start_stats_gatherer = do
-  let server = serverDefinition
-  sid <- spawnLocal $ serve 0 initFunc server >> return ()
-  register processName sid
-  return sid
+start_stats_gatherer :: Process ()
+start_stats_gatherer = serve 0 initFunc serverDefinition
   where initFunc :: InitHandler Integer State
         initFunc i = do
           logm $ "HroqStatsGatherer:start.initFunc"
@@ -145,6 +142,7 @@ serverDefinition = defaultProcess {
 
           handleCast handlePublishCast
         , handleCast (\s Ping -> do {logm $ "HroqStatsGatherer:ping"; continue s })
+        -- , handleCast (\s Ping -> do {logm $ "HroqStatsGatherer:ping"; error "blowup az" })
 
         ]
     , infoHandlers =
@@ -152,7 +150,7 @@ serverDefinition = defaultProcess {
         -- handleInfo_ (\(ProcessMonitorNotification _ _ r) -> logm $ show r >> continue_)
          handleInfo (\dict (ProcessMonitorNotification _ _ r) -> do {logm $ show r; continue dict })
         ]
-     , timeoutHandler = \_ _ -> stop $ ExitOther "timeout az"
+     , timeoutHandler = \_ _ -> do {logm "HroqStatsGatherer:timout exit"; stop $ ExitOther "timeout az"}
      , shutdownHandler = \_ reason -> do { logm $ "HroqStatsGatherer terminateHandler:" ++ (show reason) }
     } :: ProcessDefinition State
 

@@ -88,10 +88,10 @@ init([AlarmFun, QueueWatchFun]) ->
 
 -- ----------------------------------------------------------------------
 
--- childSpec :: [ChildSpec]
+childSpec :: a -> b -> [ChildSpec]
 childSpec alarmFun queueWatchFun = 
     [
-      defaultWorker hroqStatsGatherer
+      defaultWorker hroqStatsGatherer hroqStatsGathererProcessName
     -- , defaultWorker hroq_log_dumper
     -- , defaultWorker hroq_groups
     -- , defaultWorker (hroq_alarms alarmFun)
@@ -100,8 +100,8 @@ childSpec alarmFun queueWatchFun =
   where
     hroqStatsGatherer = RunClosure hroq_stats_gatherer_closure
 
-defaultWorker :: ChildStart -> ChildSpec
-defaultWorker clj =
+defaultWorker :: ChildStart -> String -> ChildSpec
+defaultWorker clj localName =
   ChildSpec
   {
     childKey     = ""
@@ -109,14 +109,14 @@ defaultWorker clj =
   , childRestart = Permanent
   , childStop    = TerminateTimeout (Delay $ milliSeconds 5000)
   , childStart   = clj
-  , childRegName = Nothing
+  , childRegName = Just (LocalName localName)
   }
 
 -- ---------------------------------------------------------------------
 
 restartStrategy :: RestartStrategy
 restartStrategy = -- restartAll
-   RestartAll {intensity = RestartLimit {maxR = maxRestarts 1,
+   RestartAll {intensity = RestartLimit {maxR = maxRestarts 5,
                                          maxT = seconds 60},
                mode = RestartInOrder {order = LeftToRight}}
 
