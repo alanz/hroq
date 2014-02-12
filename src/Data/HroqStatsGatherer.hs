@@ -7,7 +7,6 @@ module Data.HroqStatsGatherer
   , hroq_stats_gatherer
   , ping
   , hroq_stats_gatherer_closure
-  , hroqStatsGathererProcessName
   , __remoteTable
 
   , QStats(..)
@@ -16,7 +15,7 @@ module Data.HroqStatsGatherer
 
 import Control.Distributed.Process hiding (call)
 import Control.Distributed.Process.Closure
-import Control.Distributed.Process.Platform hiding (__remoteTable)
+import Control.Distributed.Process.Platform hiding (__remoteTable,monitor)
 import Control.Distributed.Process.Platform.ManagedProcess hiding (runProcess)
 import Control.Distributed.Process.Platform.Time
 import Control.Distributed.Process.Serializable()
@@ -33,14 +32,7 @@ import qualified System.Remote.Monitoring as EKG
 -- Types                                                                      --
 --------------------------------------------------------------------------------
 
--- Call and Cast request types. Response types are unnecessary as the GenProcess
--- API uses the Async API, which in turn guarantees that an async handle can
--- /only/ give back a reply for that *specific* request through the use of an
--- anonymous middle-man (as the sender and reciever in our case).
-
-data PublishQueueStats = PublishQueueStats QName QStats
-  deriving (Typeable, Generic, Eq, Show)
-instance Binary PublishQueueStats where
+-- Call and Cast request types.
 
 -- {AppInfo, NewTotalQueuedMsg, EnqueueCount, NewDequeueCount}
 data QStats = QStats { qstatsAppInfo         :: String
@@ -52,14 +44,31 @@ data QStats = QStats { qstatsAppInfo         :: String
 instance Binary QStats where
 
 
+data PublishQueueStats = PublishQueueStats QName QStats ProcessId
+  deriving (Typeable, Generic, Eq, Show)
+instance Binary PublishQueueStats where
+
+
+data PublishConsumerStats = PublishConsumerStats ConsumerName QStats ProcessId
+  deriving (Typeable, Generic, Eq, Show)
+instance Binary PublishConsumerStats where
+
+
 data Ping = Ping
   deriving (Typeable, Generic, Eq, Show)
 instance Binary Ping where
 
 -- ---------------------------------------------------------------------
 
-type State = Integer
+-- -record(state,  {qdict = dict:new(), cdict = dict:new(), pdict = dict:new()}).
+data State = ST { stQdict :: Map.Map QName        QStats
+                , stCdict :: Map.Map ConsumerName QStats
+                , stPdict :: Map.Map ProcessId    StatsType
+                }
+emptyState :: State
+emptyState = ST Map.empty Map.empty Map.empty
 
+data StatsType = StatsQueue | StatsConsumer
 
 -- ---------------------------------------------------------------------
 
@@ -71,7 +80,6 @@ hroq_stats_gatherer = start_stats_gatherer
 --------------------------------------------------------------------------------
 
 {-
--record(state,  {qdict = dict:new(), cdict = dict:new(), pdict = dict:new()}).
 
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
@@ -80,26 +88,38 @@ publish_queue_stats(QueueName, Stats)->
     gen_server:cast(?MODULE, {publish_queue_stats, QueueName, self(), Stats}).
 -}
 
-ping :: Process ()
-ping = do
-  pid <- getServerPid
-  cast pid Ping
-
 publish_queue_stats :: QName -> QStats -> Process ()
-publish_queue_stats qname stats = do -- TODO: check that enqued/dequeued are correct interpretations
+publish_queue_stats qname stats = do
   pid <- getServerPid
-  cast pid (PublishQueueStats qname stats)
+  sid <- getSelfPid
+  cast pid (PublishQueueStats qname stats sid)
 
 {-
 publish_consumer_stats(ConsName, Stats)->
     gen_server:cast(?MODULE, {publish_consumer_stats, ConsName, self(), Stats}).
+-}
 
+publish_consumer_stats :: ConsumerName -> QStats -> Process ()
+publish_consumer_stats cname stats = do
+  pid <- getServerPid
+  sid <- getSelfPid
+  cast pid (PublishConsumerStats cname stats sid)
+
+{-
 get_queue_stats(QueueName) ->
     gen_server:call(?MODULE, {get_queue_stats, QueueName}, infinity).
 
 get_consumer_stats(ConsName) ->
     gen_server:call(?MODULE, {get_consumer_stats, ConsName}, infinity).
 -}
+
+ping :: Process ()
+ping = do
+  pid <- getServerPid
+  cast pid Ping
+
+
+-- ---------------------------------------------------------------------
 
 getServerPid :: Process ProcessId
 getServerPid = do
@@ -124,11 +144,14 @@ init(_) ->
 
 -}
 start_stats_gatherer :: Process ()
-start_stats_gatherer = serve 0 initFunc serverDefinition
+start_stats_gatherer = do
+  self <- getSelfPid
+  register hroqStatsGathererProcessName self
+  serve 0 initFunc serverDefinition
   where initFunc :: InitHandler Integer State
         initFunc i = do
           logm $ "HroqStatsGatherer:start.initFunc"
-          return $ InitOk i Infinity
+          return $ InitOk emptyState Infinity
 
 -- ---------------------------------------------------------------------
 -- Implementation
@@ -140,7 +163,8 @@ serverDefinition = defaultProcess {
         --  handleCall handleEnqueue
         --, handleCall handleReadOp
 
-          handleCast handlePublishCast
+          handleCast handlePublishQueueStatsCast
+        , handleCast handlePublishConsumerStatsCast
         , handleCast (\s Ping -> do {logm $ "HroqStatsGatherer:ping"; continue s })
         -- , handleCast (\s Ping -> do {logm $ "HroqStatsGatherer:ping"; error "blowup az" })
 
@@ -154,6 +178,7 @@ serverDefinition = defaultProcess {
      , shutdownHandler = \_ reason -> do { logm $ "HroqStatsGatherer terminateHandler:" ++ (show reason) }
     } :: ProcessDefinition State
 
+-- ---------------------------------------------------------------------
 
 {-
 handle_call({get_queue_stats, QueueName}, _From, #state{qdict = Qd} = State) ->
@@ -168,7 +193,11 @@ handle_call({get_queue_stats, QueueName}, _From, #state{qdict = Qd} = State) ->
     end,
 
     {reply, Res, State};
+-}
 
+-- ---------------------------------------------------------------------
+
+{-
 handle_call({get_consumer_stats, ConsName}, _From, #state{cdict = Cd} = State) ->
 
     Res =
@@ -186,7 +215,10 @@ handle_call({get_consumer_stats, ConsName}, _From, #state{cdict = Cd} = State) -
 handle_call(Msg, _, State) ->
     ?warn({ handle_call, [Msg]}),
     {reply, error, State}.
+-}
+-- -------------------------------------------------------------------------------------------------
 
+{-
 handle_cast({publish_queue_stats, QueueName, Pid, Stats}, #state{qdict = Qd, pdict = Pd} = State) ->
 
     NQd = dict:store(QueueName, Stats, Qd),
@@ -205,6 +237,20 @@ handle_cast({publish_queue_stats, QueueName, Pid, Stats}, #state{qdict = Qd, pdi
 
     {noreply, State#state{qdict = NQd, pdict = NPd}};
 -}
+
+handlePublishQueueStatsCast :: State -> PublishQueueStats -> Process (ProcessAction State)
+handlePublishQueueStatsCast st@(ST { stQdict = qd, stPdict = pd }) (PublishQueueStats q s pid) = do
+    logm $ "handlePublishQueueStatsCast called with:" ++ (show (q,s))
+
+    let qd' = Map.insert q s qd
+
+    pd' <- case Map.lookup pid pd of
+          Just _ -> return pd
+          Nothing -> do
+            _mref <- monitor pid
+            return $ Map.insert pid StatsQueue pd
+
+    continue st {stQdict = qd', stPdict = pd'}
 
 -- ---------------------------------------------------------------------
 {-
@@ -228,10 +274,11 @@ handle_cast({publish_consumer_stats, ConsName, Pid, Stats}, #state{cdict = Cd, p
 
 -}
 
-handlePublishCast :: State -> PublishQueueStats -> Process (ProcessAction State)
-handlePublishCast state (PublishQueueStats q s) = do
-    logm $ "handlePublishCast called with:" ++ (show (q,s))
-    continue state
+handlePublishConsumerStatsCast :: State -> PublishConsumerStats -> Process (ProcessAction State)
+handlePublishConsumerStatsCast st (PublishConsumerStats c s pid) = do
+    logm $ "handlePublishConsumerStatsCast called with:" ++ (show (c,s))
+    let cd' = Map.insert c s (stCdict st)
+    continue st {stCdict = cd'}
 
 -- ---------------------------------------------------------------------
 {-
@@ -271,10 +318,13 @@ code_change(_,StateData,_)->
 %EOF
 -}
 
+-- ---------------------------------------------------------------------
+
 -- NOTE: the TH crap has to be a the end, as it can only see the stuff lexically before it in the file
 
 $(remotable [ 'hroq_stats_gatherer
             ])
 
+hroq_stats_gatherer_closure :: Closure (Process ())
 hroq_stats_gatherer_closure = ($(mkStaticClosure 'hroq_stats_gatherer))
 

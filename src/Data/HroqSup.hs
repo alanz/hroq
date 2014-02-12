@@ -91,7 +91,7 @@ init([AlarmFun, QueueWatchFun]) ->
 childSpec :: a -> b -> [ChildSpec]
 childSpec alarmFun queueWatchFun = 
     [
-      defaultWorker hroqStatsGatherer hroqStatsGathererProcessName
+      defaultWorker hroqStatsGatherer -- hroqStatsGathererProcessName
     -- , defaultWorker hroq_log_dumper
     -- , defaultWorker hroq_groups
     -- , defaultWorker (hroq_alarms alarmFun)
@@ -100,8 +100,8 @@ childSpec alarmFun queueWatchFun =
   where
     hroqStatsGatherer = RunClosure hroq_stats_gatherer_closure
 
-defaultWorker :: ChildStart -> String -> ChildSpec
-defaultWorker clj localName =
+defaultWorker :: ChildStart -> ChildSpec
+defaultWorker clj =
   ChildSpec
   {
     childKey     = ""
@@ -109,7 +109,7 @@ defaultWorker clj localName =
   , childRestart = Permanent
   , childStop    = TerminateTimeout (Delay $ milliSeconds 5000)
   , childStart   = clj
-  , childRegName = Just (LocalName localName)
+  , childRegName = Nothing
   }
 
 -- ---------------------------------------------------------------------

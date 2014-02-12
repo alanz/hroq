@@ -57,14 +57,14 @@ maxBucketSizeConst = 50
 -- ---------------------------------------------------------------------
 
 data ConsumerName = CN !String
-                    deriving (Eq,Show,Read,Typeable)
+                    deriving (Eq,Show,Read,Typeable,Ord)
 instance Binary ConsumerName where
   put (CN n) = put n
   get = liftM CN get
 
 
 data QName = QN !String
-             deriving (Typeable,Show,Read,Eq)
+             deriving (Typeable,Show,Read,Eq,Ord)
 
 instance Binary QName where
   put (QN s) = put s
