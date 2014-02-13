@@ -48,14 +48,11 @@ executable hroq
     -- -prof -auto
     -- -fhpc
   -- other-modules:       
-  build-depends:       base >= 4
-                       -- base ==4.6.*
+  build-depends:       base >= 4.4 && < 5
                        , RefSerialize
                        , distributed-process
                        , distributed-process-platform
-                       -- , distributed-process-simplelocalnet
                        , distributed-static
-                       -- , binary
                        , binary >= 0.6.3.0 && < 0.8
                        , bytestring
                        , containers
@@ -71,16 +68,26 @@ executable hroq
                        , hslogger
                        , old-locale
 
-test-suite Tests
-  type:                exitcode-stdio-1.0
-  x-uses-tf:           true
-  build-depends:       base >= 4
-                       , hspec
+test-suite StatsGathererTests
+  type:            exitcode-stdio-1.0
+  x-uses-tf:       true
+  build-depends:
+                     base >= 4.4 && < 5
+                   , distributed-process
+                   , distributed-process-platform
+                   , network-transport
+                   , network-transport-tcp
+                   , test-framework
+                   , test-framework-hunit
+                   , HUnit
+                   , rematch
+                   , stm
   hs-source-dirs:
                    tests
   ghc-options:     -Wall -threaded -rtsopts -with-rtsopts=-N
   -- extensions:      CPP
-  main-is:         Spec.hs
+  main-is:         TestStatsGatherer.hs
+
 
 source-repository head
     type: git

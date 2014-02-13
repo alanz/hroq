@@ -3,10 +3,20 @@
 {-# LANGUAGE DeriveGeneric        #-}
 module Data.HroqStatsGatherer
   (
-    publish_queue_stats
-  , hroq_stats_gatherer
-  , ping
+  -- * Starting the server
+    hroq_stats_gatherer
   , hroq_stats_gatherer_closure
+
+  -- * API
+  , publish_queue_stats
+  , publish_consumer_stats
+  , get_queue_stats
+  , get_consumer_stats
+
+  -- * Debug
+  , ping
+
+  -- * Remote Table
   , __remoteTable
 
   , QStats(..)
@@ -43,6 +53,26 @@ data QStats = QStats { qstatsAppInfo         :: String
   deriving (Typeable, Generic, Eq, Show)
 instance Binary QStats where
 
+-- Call operations
+data GetQueueStats = GetQueueStats QName
+  deriving (Typeable, Generic, Eq, Show)
+instance Binary GetQueueStats where
+
+data GetQueueStatsReply = ReplyQStats QStats | ReplyQStatsNotFound
+  deriving (Typeable, Generic, Eq, Show)
+instance Binary GetQueueStatsReply where
+
+--
+
+data GetConsumerStats = GetConsumerStats ConsumerName
+  deriving (Typeable, Generic, Eq, Show)
+instance Binary GetConsumerStats where
+
+data GetConsumerStatsReply = ReplyCStats QStats | ReplyCStatsNotFound
+  deriving (Typeable, Generic, Eq, Show)
+instance Binary GetConsumerStatsReply where
+
+-- Cast operations
 
 data PublishQueueStats = PublishQueueStats QName QStats ProcessId
   deriving (Typeable, Generic, Eq, Show)
@@ -68,7 +98,7 @@ data State = ST { stQdict :: Map.Map QName        QStats
 emptyState :: State
 emptyState = ST Map.empty Map.empty Map.empty
 
-data StatsType = StatsQueue | StatsConsumer
+data StatsType = StatsQueue QName | StatsConsumer ConsumerName
 
 -- ---------------------------------------------------------------------
 
@@ -108,10 +138,21 @@ publish_consumer_stats cname stats = do
 {-
 get_queue_stats(QueueName) ->
     gen_server:call(?MODULE, {get_queue_stats, QueueName}, infinity).
+-}
 
+get_queue_stats :: QName -> Process GetQueueStatsReply
+get_queue_stats qname = do
+  pid <- getServerPid
+  call pid (GetQueueStats qname)
+
+{-
 get_consumer_stats(ConsName) ->
     gen_server:call(?MODULE, {get_consumer_stats, ConsName}, infinity).
 -}
+get_consumer_stats :: ConsumerName -> Process GetConsumerStatsReply
+get_consumer_stats cname = do
+  pid <- getServerPid
+  call pid (GetConsumerStats cname)
 
 ping :: Process ()
 ping = do
@@ -160,10 +201,10 @@ start_stats_gatherer = do
 serverDefinition :: ProcessDefinition State
 serverDefinition = defaultProcess {
      apiHandlers = [
-        --  handleCall handleEnqueue
-        --, handleCall handleReadOp
+          handleCall handleGetQueueStatsCall
+        , handleCall handleGetConsumerStatsCall
 
-          handleCast handlePublishQueueStatsCast
+        , handleCast handlePublishQueueStatsCast
         , handleCast handlePublishConsumerStatsCast
         , handleCast (\s Ping -> do {logm $ "HroqStatsGatherer:ping"; continue s })
         -- , handleCast (\s Ping -> do {logm $ "HroqStatsGatherer:ping"; error "blowup az" })
@@ -171,8 +212,8 @@ serverDefinition = defaultProcess {
         ]
     , infoHandlers =
         [
-        -- handleInfo_ (\(ProcessMonitorNotification _ _ r) -> logm $ show r >> continue_)
-         handleInfo (\dict (ProcessMonitorNotification _ _ r) -> do {logm $ show r; continue dict })
+         -- handleInfo (\st (ProcessMonitorNotification _ _ r) -> do {logm $ show r; continue st })
+         handleInfo handleInfoProcessMonitorNotification
         ]
      , timeoutHandler = \_ _ -> do {logm "HroqStatsGatherer:timout exit"; stop $ ExitOther "timeout az"}
      , shutdownHandler = \_ reason -> do { logm $ "HroqStatsGatherer terminateHandler:" ++ (show reason) }
@@ -195,6 +236,16 @@ handle_call({get_queue_stats, QueueName}, _From, #state{qdict = Qd} = State) ->
     {reply, Res, State};
 -}
 
+handleGetQueueStatsCall :: State -> GetQueueStats -> Process (ProcessReply GetQueueStatsReply State)
+handleGetQueueStatsCall st@(ST {stQdict = qd}) (GetQueueStats qname) = do
+    logm $ "handleGetQueueStatsCall called with:" ++ (show (qname))
+
+    let res = case Map.lookup qname qd of
+          Just stats -> ReplyQStats stats
+          Nothing -> ReplyQStatsNotFound
+
+    reply res st
+
 -- ---------------------------------------------------------------------
 
 {-
@@ -210,19 +261,34 @@ handle_call({get_consumer_stats, ConsName}, _From, #state{cdict = Cd} = State) -
     end,
 
     {reply, Res, State};
+-}
+
+handleGetConsumerStatsCall :: State -> GetConsumerStats -> Process (ProcessReply GetConsumerStatsReply State)
+handleGetConsumerStatsCall st@(ST {stCdict = cd}) (GetConsumerStats cname) = do
+    logm $ "handleGetConsumerStatsCall called with:" ++ (show (cname))
+
+    let res = case Map.lookup cname cd of
+          Just stats -> ReplyCStats stats
+          Nothing -> ReplyCStatsNotFound
+
+    reply res st
 
 
+-- ---------------------------------------------------------------------
+
+{-
 handle_call(Msg, _, State) ->
     ?warn({ handle_call, [Msg]}),
     {reply, error, State}.
 -}
+
 -- -------------------------------------------------------------------------------------------------
 
 {-
 handle_cast({publish_queue_stats, QueueName, Pid, Stats}, #state{qdict = Qd, pdict = Pd} = State) ->
 
     NQd = dict:store(QueueName, Stats, Qd),
-    
+
     NPd =
     case dict:find(Pid, Pd) of
     {ok, _} ->
@@ -246,18 +312,20 @@ handlePublishQueueStatsCast st@(ST { stQdict = qd, stPdict = pd }) (PublishQueue
 
     pd' <- case Map.lookup pid pd of
           Just _ -> return pd
+
           Nothing -> do
             _mref <- monitor pid
-            return $ Map.insert pid StatsQueue pd
+            return $ Map.insert pid (StatsQueue q) pd
 
     continue st {stQdict = qd', stPdict = pd'}
 
 -- ---------------------------------------------------------------------
+
 {-
 handle_cast({publish_consumer_stats, ConsName, Pid, Stats}, #state{cdict = Cd, pdict = Pd} = State) ->
 
     NCd = dict:store(ConsName, Stats, Cd),
-    
+
     NPd =
     case dict:find(Pid, Pd) of
     {ok, _} ->
@@ -275,25 +343,37 @@ handle_cast({publish_consumer_stats, ConsName, Pid, Stats}, #state{cdict = Cd, p
 -}
 
 handlePublishConsumerStatsCast :: State -> PublishConsumerStats -> Process (ProcessAction State)
-handlePublishConsumerStatsCast st (PublishConsumerStats c s pid) = do
+handlePublishConsumerStatsCast st@(ST {stCdict = cd, stPdict = pd}) (PublishConsumerStats c s pid) = do
     logm $ "handlePublishConsumerStatsCast called with:" ++ (show (c,s))
-    let cd' = Map.insert c s (stCdict st)
-    continue st {stCdict = cd'}
+    let cd' = Map.insert c s cd
+
+    pd' <- case Map.lookup pid pd of
+          Just _ -> return pd
+
+          Nothing -> do
+            _mref <- monitor pid
+            return $ Map.insert pid (StatsConsumer c) pd
+
+    continue st {stCdict = cd', stPdict = pd'}
+
 
 -- ---------------------------------------------------------------------
 {-
 handle_cast(Msg, State) ->
     ?warn({ handle_cast, [Msg, State]}),
     {noreply, State}.
+-}
 
+-- ---------------------------------------------------------------------
 
+{-
 handle_info({'DOWN', _Ref, process, Pid, _Info}, #state{qdict = Qd, cdict = Cd, pdict = Pd} = State) ->
 
     case dict:find(Pid, Pd) of
     {ok, {consumer, C}} ->
-        
+
         {noreply, State#state{cdict = dict:erase(C, Cd), pdict = dict:erase(Pid, Pd) }};
-        
+
     {ok, {queue, Q}} ->
 
         {noreply, State#state{qdict = dict:erase(Q, Qd), pdict = dict:erase(Pid, Pd) }};
@@ -301,13 +381,32 @@ handle_info({'DOWN', _Ref, process, Pid, _Info}, #state{qdict = Qd, cdict = Cd, 
     _ ->
         {noreply, State}
     end;
+-}
 
+-- | If the stats origin disappears, erase the stats to prevent long
+-- term memory leak
+handleInfoProcessMonitorNotification :: State -> ProcessMonitorNotification -> Process (ProcessAction State)
+handleInfoProcessMonitorNotification st n@(ProcessMonitorNotification _ref pid _reason) = do
+  logm $ "handleInfoProcessMonitorNotification called with: " ++ show n
+  let qd = stQdict st
+      cd = stCdict st
+      pd = stPdict st
+  case Map.lookup pid pd of
+        Just (StatsConsumer c) -> continue st { stCdict = Map.delete c cd
+                                              , stPdict = Map.delete pid pd }
+        Just (StatsQueue q)    -> continue st { stQdict = Map.delete q qd
+                                              , stPdict = Map.delete pid pd }
+        Nothing               -> continue st
+
+-- ---------------------------------------------------------------------
+
+{-
 handle_info(Info, State) ->
 
     ?warn({handle_info, [Info, State]}),
 
     {noreply, State}.
-    
+
 terminate(_, _) ->
     ok.
 
