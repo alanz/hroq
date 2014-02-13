@@ -13,13 +13,17 @@ module Data.HroqStatsGatherer
   , get_queue_stats
   , get_consumer_stats
 
+  -- * Types
+  , QStats(..)
+  , GetQueueStatsReply (..)
+  , GetConsumerStatsReply (..)
+
   -- * Debug
   , ping
 
   -- * Remote Table
   , __remoteTable
 
-  , QStats(..)
   )
   where
 
@@ -113,38 +117,41 @@ hroq_stats_gatherer = start_stats_gatherer
 
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+-}
 
+-- -------------------------------------
+{-
 publish_queue_stats(QueueName, Stats)->
     gen_server:cast(?MODULE, {publish_queue_stats, QueueName, self(), Stats}).
 -}
-
 publish_queue_stats :: QName -> QStats -> Process ()
 publish_queue_stats qname stats = do
   pid <- getServerPid
   sid <- getSelfPid
   cast pid (PublishQueueStats qname stats sid)
 
+-- -------------------------------------
 {-
 publish_consumer_stats(ConsName, Stats)->
     gen_server:cast(?MODULE, {publish_consumer_stats, ConsName, self(), Stats}).
 -}
-
 publish_consumer_stats :: ConsumerName -> QStats -> Process ()
 publish_consumer_stats cname stats = do
   pid <- getServerPid
   sid <- getSelfPid
   cast pid (PublishConsumerStats cname stats sid)
 
+-- -------------------------------------
 {-
 get_queue_stats(QueueName) ->
     gen_server:call(?MODULE, {get_queue_stats, QueueName}, infinity).
 -}
-
 get_queue_stats :: QName -> Process GetQueueStatsReply
 get_queue_stats qname = do
   pid <- getServerPid
   call pid (GetQueueStats qname)
 
+-- -------------------------------------
 {-
 get_consumer_stats(ConsName) ->
     gen_server:call(?MODULE, {get_consumer_stats, ConsName}, infinity).
@@ -153,6 +160,8 @@ get_consumer_stats :: ConsumerName -> Process GetConsumerStatsReply
 get_consumer_stats cname = do
   pid <- getServerPid
   call pid (GetConsumerStats cname)
+
+-- -------------------------------------
 
 ping :: Process ()
 ping = do
@@ -174,6 +183,7 @@ getServerPid = do
 hroqStatsGathererProcessName :: String
 hroqStatsGathererProcessName = "HroqStatsGatherer"
 
+-- ---------------------------------------------------------------------
 {-
 init_state() -> #state{}.
 
@@ -207,16 +217,16 @@ serverDefinition = defaultProcess {
         , handleCast handlePublishQueueStatsCast
         , handleCast handlePublishConsumerStatsCast
         , handleCast (\s Ping -> do {logm $ "HroqStatsGatherer:ping"; continue s })
-        -- , handleCast (\s Ping -> do {logm $ "HroqStatsGatherer:ping"; error "blowup az" })
 
         ]
     , infoHandlers =
         [
-         -- handleInfo (\st (ProcessMonitorNotification _ _ r) -> do {logm $ show r; continue st })
          handleInfo handleInfoProcessMonitorNotification
         ]
-     , timeoutHandler = \_ _ -> do {logm "HroqStatsGatherer:timout exit"; stop $ ExitOther "timeout az"}
-     , shutdownHandler = \_ reason -> do { logm $ "HroqStatsGatherer terminateHandler:" ++ (show reason) }
+     , timeoutHandler = \_ _ -> do
+           {logm "HroqStatsGatherer:timout exit"; stop $ ExitOther "timeout az"}
+     , shutdownHandler = \_ reason -> do
+           { logm $ "HroqStatsGatherer terminateHandler:" ++ (show reason) }
     } :: ProcessDefinition State
 
 -- ---------------------------------------------------------------------
@@ -236,7 +246,9 @@ handle_call({get_queue_stats, QueueName}, _From, #state{qdict = Qd} = State) ->
     {reply, Res, State};
 -}
 
-handleGetQueueStatsCall :: State -> GetQueueStats -> Process (ProcessReply GetQueueStatsReply State)
+handleGetQueueStatsCall ::
+      State -> GetQueueStats
+   -> Process (ProcessReply GetQueueStatsReply State)
 handleGetQueueStatsCall st@(ST {stQdict = qd}) (GetQueueStats qname) = do
     logm $ "handleGetQueueStatsCall called with:" ++ (show (qname))
 
@@ -263,7 +275,9 @@ handle_call({get_consumer_stats, ConsName}, _From, #state{cdict = Cd} = State) -
     {reply, Res, State};
 -}
 
-handleGetConsumerStatsCall :: State -> GetConsumerStats -> Process (ProcessReply GetConsumerStatsReply State)
+handleGetConsumerStatsCall ::
+       State -> GetConsumerStats
+    -> Process (ProcessReply GetConsumerStatsReply State)
 handleGetConsumerStatsCall st@(ST {stCdict = cd}) (GetConsumerStats cname) = do
     logm $ "handleGetConsumerStatsCall called with:" ++ (show (cname))
 
@@ -396,7 +410,7 @@ handleInfoProcessMonitorNotification st n@(ProcessMonitorNotification _ref pid _
                                               , stPdict = Map.delete pid pd }
         Just (StatsQueue q)    -> continue st { stQdict = Map.delete q qd
                                               , stPdict = Map.delete pid pd }
-        Nothing               -> continue st
+        Nothing                -> continue st
 
 -- ---------------------------------------------------------------------
 

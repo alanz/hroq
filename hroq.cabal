@@ -73,17 +73,25 @@ test-suite StatsGathererTests
   x-uses-tf:       true
   build-depends:
                      base >= 4.4 && < 5
+                   , HUnit
+                   , RefSerialize
+                   , binary
+                   , bytestring
+                   , containers
                    , distributed-process
                    , distributed-process-platform
+                   , ekg
+                   , hslogger
                    , network-transport
                    , network-transport-tcp
-                   , test-framework
-                   , test-framework-hunit
-                   , HUnit
+                   , old-locale
                    , rematch
                    , stm
+                   , test-framework
+                   , test-framework-hunit
+                   , time
   hs-source-dirs:
-                   tests
+                   tests src
   ghc-options:     -Wall -threaded -rtsopts -with-rtsopts=-N
   -- extensions:      CPP
   main-is:         TestStatsGatherer.hs
