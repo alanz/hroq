@@ -39,7 +39,6 @@ import qualified Data.Map as Map
 import Data.Hroq
 import Data.HroqLogger
 import GHC.Generics
-import qualified System.Remote.Monitoring as EKG
 
 
 --------------------------------------------------------------------------------
@@ -113,12 +112,6 @@ hroq_stats_gatherer = start_stats_gatherer
 -- API                                                                        --
 --------------------------------------------------------------------------------
 
-{-
-
-start_link() ->
-    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
--}
-
 -- -------------------------------------
 {-
 publish_queue_stats(QueueName, Stats)->
@@ -185,6 +178,10 @@ hroqStatsGathererProcessName = "HroqStatsGatherer"
 
 -- ---------------------------------------------------------------------
 {-
+
+start_link() ->
+    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+
 init_state() -> #state{}.
 
 init(_) ->
@@ -203,10 +200,6 @@ start_stats_gatherer = do
         initFunc i = do
           logm $ "HroqStatsGatherer:start.initFunc"
           return $ InitOk emptyState Infinity
-
--- ---------------------------------------------------------------------
--- Implementation
--- ---------------------------------------------------------------------
 
 serverDefinition :: ProcessDefinition State
 serverDefinition = defaultProcess {
@@ -228,6 +221,10 @@ serverDefinition = defaultProcess {
      , shutdownHandler = \_ reason -> do
            { logm $ "HroqStatsGatherer terminateHandler:" ++ (show reason) }
     } :: ProcessDefinition State
+
+-- ---------------------------------------------------------------------
+-- Implementation
+-- ---------------------------------------------------------------------
 
 -- ---------------------------------------------------------------------
 

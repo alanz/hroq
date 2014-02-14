@@ -267,7 +267,7 @@ initFunc (queueName,appInfo,doCleanup,ekg) = do
 
 
     -- eroq_groups:join(QueueName, ?MODULE),
-    join queueName "HroqQueue"
+    join (NGQueue queueName)
     logm $ "HroqQueue:initFunc 6"
 
     -- catch(eroq_stats_gatherer:publish_queue_stats(QueueName, {AppInfo, QueueSize, 0, 0})),

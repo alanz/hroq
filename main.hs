@@ -20,6 +20,7 @@ import Data.Hroq
 import Data.HroqConsumer
 import Data.HroqConsumerTH
 import Data.HroqDlqWorkers
+import Data.HroqGroups
 import Data.HroqLogger
 import Data.HroqMnesia
 import Data.HroqQueue
@@ -32,6 +33,7 @@ import Data.RefSerialize
 import Data.Typeable (Typeable)
 import Network.Transport.TCP (createTransportExposeInternals, defaultTCPParameters)
 import qualified Data.HroqApp as App
+import qualified Data.HroqGroups as G
 import qualified Data.Map as Map
 
 -- https://github.com/tibbe/ekg
@@ -65,9 +67,19 @@ worker_supervised = do
   logm $ "worker_supervised started:pid=" ++ show pid
   sleepFor 2 Seconds
   ping
+
+  logm $ "starting queue group stuff"
+  q1 <- queues
+  logm $ "queues:q1=" ++ show q1
+
+  G.join (G.NGQueue (QN "queue1"))
+
+  q2 <- queues
+  logm $ "queues:q1=" ++ show q2
+
   sleepFor 5 Seconds
   logm "worker_supervised done"
-  
+ 
   return ()
 
 -- ---------------------------------------------------------------------
@@ -302,7 +314,8 @@ startLocalNode = do
     rtable :: RemoteTable
     rtable = Control.Distributed.Process.Platform.__remoteTable
            $ Data.HroqConsumerTH.__remoteTable
-           $ Data.HroqDlqWorkers.__remoteTable 
+           $ Data.HroqDlqWorkers.__remoteTable
+           $ Data.HroqGroups.__remoteTable
            $ Data.HroqSampleWorker.__remoteTable
            $ Data.HroqStatsGatherer.__remoteTable
            $ initRemoteTable
