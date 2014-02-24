@@ -3,6 +3,7 @@ module Data.HroqUtil
     generate_key
   , retry_dirty_write
   , retry_dirty_read
+
   )
   where
 
@@ -28,6 +29,7 @@ import Data.HroqMnesia
 -- import Data.TCache.Defs
 import Data.RefSerialize
 import Data.Time.Clock
+import Data.Ratio ((%))
 
 -- ---------------------------------------------------------------------
 
@@ -100,4 +102,6 @@ retry_dirty_read n tableName key = do
   -- logm $ "retry_dirty_read:" ++ (show (n,tableName,key))
   dirty_read tableName key
 
--- ---------------------------------------------------------------------
+
+
+

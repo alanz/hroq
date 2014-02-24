@@ -34,8 +34,8 @@ import Data.HroqApp
 import Data.HroqConsumerTH
 import Data.HroqLogger
 import Data.HroqQueue
+import Data.HroqUtil
 import Data.Maybe
-import Data.Ratio ((%))
 import Data.RefSerialize
 import Data.Time.Clock
 import Data.Typeable hiding (cast)
@@ -46,7 +46,7 @@ import qualified Data.Map as Map
 
 import qualified System.Remote.Monitoring as EKG
 
-pROCESSING_ERROR_DELAY = picosecondsToNominalDiffTime (2 * 10^12)
+pROCESSING_ERROR_DELAY = microsecondsToNominalDiffTime (2 * 10^6)
 
 --------------------------------------------------------------------------------
 -- API                                                                        --
@@ -254,11 +254,7 @@ instance Binary NominalDiffTime where
   put ndt = put ((round ndt)::Integer)
   get = do
     val <- get
-    return $ picosecondsToNominalDiffTime val
-
--- | Create a 'DiffTime' from a number of picoseconds.
-picosecondsToNominalDiffTime :: Integer -> NominalDiffTime
-picosecondsToNominalDiffTime x = fromRational (x % 1000000000000)
+    return $ microsecondsToNominalDiffTime val
 
 -- ---------------------------------------------------------------------
 
