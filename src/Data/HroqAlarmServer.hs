@@ -47,13 +47,26 @@ import qualified Data.Set as Set
 -- Types                                                                      --
 --------------------------------------------------------------------------------
 
-data AlarmTrigger = AT TriggerType QName Integer Integer
+data AlarmTrigger = AT TriggerType QName TriggerParams
   deriving (Typeable, Generic, Eq, Show)
 instance Binary AlarmTrigger where
 
 data TriggerType = TriggerQueue
   deriving (Typeable, Generic, Eq, Show)
 instance Binary TriggerType where
+
+data TriggerParams = TriggerSize Integer Integer
+                   | TriggerStatic Integer NominalDiffTime
+  deriving (Typeable, Generic, Eq, Show)
+instance Binary TriggerParams where
+
+instance Binary NominalDiffTime where
+  put nd = put 'N' >> put (toRational nd)
+  get = do
+    sel <- get
+    v <- get
+    case sel of
+      'N' -> return (fromRational v)
 
 -- Call and Cast request types.
 
@@ -73,8 +86,10 @@ data State = ST { stLastCheck :: UTCTime
                 , stTriggers :: [AlarmTrigger]
                 }
 
-type StatsDict = Map.Map QName (Integer,TimeStamp)
+-- | For each queue, keep track of last size and dequeueCount, at timestamp
+type StatsDict = Map.Map QName (Integer,Integer,UTCTime)
 
+-- | appinfo,qname, qsize,dequeueCount
 type Internal = (String,QName,Integer,Integer)
 
 noopFun _ = return ()
@@ -112,7 +127,7 @@ data QueueAlarmConfig = QAC { acName :: String
 
 data Constraint = Include String
 
-data Param = P ParamType Int
+data Param = P ParamType Integer
 
 data ParamType = Static | MaxSize
 
@@ -426,6 +441,7 @@ get_alarm_param(ParamName, AlarmParams)->
     end.
 -}
 
+get_alarm_param :: ParamType -> [Param] -> Maybe Integer
 get_alarm_param paramName alarmParams = undefined
 
 -- ---------------------------------------------------------------------
@@ -484,7 +500,7 @@ get_last_stats(StringQueueName, DequeueCount, StatsDict)->
     end.
 -}
 
-get_last_stats :: QName -> Integer -> [Internal] -> Process (Integer,UTCTime)
+get_last_stats :: QName -> Integer -> StatsDict -> Process (Integer,Integer,UTCTime)
 get_last_stats stringQueueName dequeueCount statsDict = do
   now <- liftIO $ getCurrentTime
   return undefined
@@ -545,7 +561,7 @@ determine_alarms
   -> Integer
   -> Integer
   -> [QueueAlarmConfig]
-  -> [Internal]
+  -> StatsDict
   -> [String]
   -> [AlarmTrigger]
   -> Process (StatsDict, [String], [AlarmTrigger])
@@ -567,26 +583,26 @@ determine_alarms queueType stringQueueName queueSize dequeueCount (h:t) statsDic
                case get_alarm_param MaxSize alarmParams of
                  Just maxSize -> do
                    if queueSize > maxSize
-                     then return (inc_alarm_count alarmName alarmList,(AT TriggerQueue stringQueueName maxSize queueSize):alarmTriggers)
+                     then return (inc_alarm_count alarmName alarmList,(AT TriggerQueue stringQueueName (TriggerSize maxSize queueSize)):alarmTriggers)
                      else return (alarmList,alarmTriggers)
                  Nothing -> return (alarmList,alarmTriggers)
 
             case get_alarm_param Static alarmParams of
               Just maxStaticTimeSecs -> do
-                (lastDeqCount,lastChangeTimestamp) <- get_last_stats stringQueueName dequeueCount statsDict
+                (lastQueueSize,lastDeqCount,lastChangeTimestamp) <- get_last_stats stringQueueName dequeueCount statsDict
 
                 if (lastDeqCount == dequeueCount) && (queueSize > 0)
                   then do
                     let queueStaticAgeSecs = diffUTCTime now lastChangeTimestamp
                     (staticAlarmList,staticAlarmTriggers) <- do
-                      if (queueSize > 0) && (lastDeqCount == dequeueCount) && (queueStaticAgeSecs > maxStaticTimeSecs) 
-                        then return (inc_alarm_count alarmName maxSizeAlarmList, (TriggerQueue, stringQueueName, Static, maxStaticTimeSecs, queueStaticAgeSecs):maxSizeAlarmTriggers)
+                      if (queueSize > 0) && (lastDeqCount == dequeueCount) && (queueStaticAgeSecs > (timeIntervalToDiffTime $ seconds $ fromIntegral maxStaticTimeSecs)) 
+                        then return (inc_alarm_count alarmName maxSizeAlarmList, (AT TriggerQueue stringQueueName (TriggerStatic maxStaticTimeSecs queueStaticAgeSecs)):maxSizeAlarmTriggers)
                         else return (maxSizeAlarmList,maxSizeAlarmTriggers)
 
-                    return (Map.insert stringQueueName (lastDeqCount, lastChangeTimestamp) statsDict, staticAlarmList, staticAlarmTriggers)
+                    return (Map.insert stringQueueName (lastQueueSize,lastDeqCount, lastChangeTimestamp) statsDict, staticAlarmList, staticAlarmTriggers)
 
                   else
-                     return (Map.insert stringQueueName (dequeueCount,now) statsDict, maxSizeAlarmList, maxSizeAlarmTriggers)
+                     return (Map.insert stringQueueName (queueSize,dequeueCount, now) statsDict, maxSizeAlarmList, maxSizeAlarmTriggers)
 
               Nothing ->
                     return (statsDict, maxSizeAlarmList, maxSizeAlarmTriggers)
