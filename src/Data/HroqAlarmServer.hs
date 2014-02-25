@@ -100,7 +100,7 @@ emptyState = ST (UTCTime (fromGregorian 1900 0 0) 0) Map.empty noopFun []
 
 -- -define(MONITOR_INTERVAL_MS, eroq_util:app_param(alarm_monitor_interval_ms, 30000)).
 mONITOR_INTERVAL_MS :: Delay
-mONITOR_INTERVAL_MS = Delay $ milliSeconds 3000
+mONITOR_INTERVAL_MS = Delay $ milliSeconds 30000
 
 {-
 -define(EXAMPLE_QUEUE_ALARM_CONFIG, [
@@ -174,7 +174,7 @@ getServerPid = do
     Just pid -> return pid
     Nothing -> do
       logm "HroqAlarmServer:getServerPid failed"
-      error "blow up"
+      error "HroqAlarmServer:blow up"
 
 hroqAlarmSrverProcessName :: String
 hroqAlarmSrverProcessName = "HroqAlarmServer"
@@ -248,9 +248,9 @@ handle_call(triggers, _From, #eroq_alarm_server_state{triggers = Triggers} = Sta
     {reply, {ok, Triggers}, State, 0};
 -}
 handleTriggersCall :: State -> Triggers -> Process (ProcessReply [AlarmTrigger] State)
-handleTriggersCall st@(ST {stTriggers = triggers}) ts = do
+handleTriggersCall st@(ST {stTriggers = trigs}) _ts = do
     logm $ "handleTriggerCall called with:" ++ (show (Check))
-    reply triggers st
+    reply trigs st
 
 -- ---------------------------------------------------------------------
 {-
@@ -270,7 +270,6 @@ handle_info(timeout, State) ->
 
 -- timeoutAfter :: TimeInterval -> s -> Process (ProcessAction s)
 
--- handleTimeout :: State -> Process (ProcessAction State)
 handleTimeout :: TimeoutHandler State
 handleTimeout st _currDelay = do
   (st',sleepMs) <- do_safe_alarm_processing st False

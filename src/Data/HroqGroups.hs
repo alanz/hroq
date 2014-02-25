@@ -161,7 +161,7 @@ getServerPid = do
     Just pid -> return pid
     Nothing -> do
       logm "HroqGroups:getServerPid failed"
-      error "blow up"
+      error "HroqGroups:blow up"
 
 hroqGroupsProcessName :: String
 hroqGroupsProcessName = "HroqGroups"

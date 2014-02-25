@@ -171,7 +171,7 @@ getServerPid = do
     Just pid -> return pid
     Nothing -> do
       logm "HroqStatsGatherer:getServerPid failed"
-      error "blow up"
+      error "HroqStatsGatherer:blow up"
 
 hroqStatsGathererProcessName :: String
 hroqStatsGathererProcessName = "HroqStatsGatherer"

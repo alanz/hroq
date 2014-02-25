@@ -29,7 +29,7 @@ import qualified Data.Map as Map
 
 -- ---------------------------------------------------------------------
 
-hroq_start_link :: a -> b -> Process ProcessId
+hroq_start_link :: a -> Closure (String -> Process ()) -> Process ProcessId
 hroq_start_link alarmFun qwFun = do
   logm "hroq_start_link starting"
   pid <- start restartStrategy (childSpec alarmFun qwFun)
@@ -88,19 +88,21 @@ init([AlarmFun, QueueWatchFun]) ->
 
 -- ----------------------------------------------------------------------
 
-childSpec :: a -> b -> [ChildSpec]
+childSpec :: a -> Closure CallbackFun -> [ChildSpec]
 childSpec alarmFun queueWatchFun =
     [
       defaultWorker hroqStatsGatherer
     -- , defaultWorker hroq_log_dumper
     , defaultWorker hroqGroups
     , defaultWorker hroqAlarms
-    -- , defaultWorker (hroq_queue_watch_server queueWatchFun)
+    , defaultWorker hroqQueueWatch
     ]
   where
     hroqStatsGatherer = RunClosure hroq_stats_gatherer_closure
     hroqGroups = RunClosure hroq_groups_closure
     hroqAlarms = RunClosure hroq_alarm_server_closure
+    -- hroqQueueWatch = RunClosure (hroq_queue_watch_server_closure queueWatchFun)
+    hroqQueueWatch = RunClosure (hroq_queue_watch_server_closure undefined)
 
 defaultWorker :: ChildStart -> ChildSpec
 defaultWorker clj =

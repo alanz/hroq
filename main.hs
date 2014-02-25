@@ -26,6 +26,7 @@ import Data.HroqLogger
 import Data.HroqMnesia
 import Data.HroqQueue
 import Data.HroqQueueMeta
+import Data.HroqQueueWatchServer
 import Data.HroqSampleWorker
 import Data.HroqStatsGatherer
 import Data.HroqSup
@@ -76,7 +77,13 @@ worker_supervised = do
   rt <- triggers
   logm $ "worker_supervised alarm server triggers done:got" ++ show rt
 
-  ping
+
+  sleepFor 1 Seconds
+  -- logm $ "worker_supervised about to start up queuewatch"
+  -- hroq_queue_watch_server queueWatchNoOpCallbackClosure
+  -- logm $ "worker_supervised about to start up queuewatch:done"
+
+  Data.HroqQueueWatchServer.ping
 
   logm $ "starting queue group stuff"
   q1 <- queues
@@ -89,7 +96,7 @@ worker_supervised = do
 
   sleepFor 5 Seconds
   logm "worker_supervised done"
- 
+
   return ()
 
 -- ---------------------------------------------------------------------

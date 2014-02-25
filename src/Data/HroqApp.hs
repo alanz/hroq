@@ -25,6 +25,7 @@ import Data.HroqSup
 import Data.HroqGroups
 import Data.HroqMnesia
 import Data.HroqQueueMeta
+import Data.HroqQueueWatchServer
 import Data.HroqStatsGatherer
 import Data.HroqUtil
 import Data.List
@@ -111,8 +112,11 @@ start_app = do
     -- AlarmFun = get_callback(alarms_callback),
     let alarmFun = get_callback "alarms_callback"
     -- QWFun    = get_callback(queue_watch_callback),
-    let qwFun = get_callback "queue_watch_callback"
+    let qwFun = queueWatchNoOpCallbackClosure
+    -- let qwFun = get_callback "queue_watch_callback"
+
     -- eroq_sup:start_link(AlarmFun, QWFun).
+
     supPid <- hroq_start_link alarmFun qwFun
     return ()
 
