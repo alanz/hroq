@@ -307,7 +307,7 @@ handle_info(_, State) ->
 -}
 handleInfoProcessMonitorNotification :: State -> ProcessMonitorNotification -> Process (ProcessAction State)
 handleInfoProcessMonitorNotification st n@(ProcessMonitorNotification ref _pid _reason) = do
-  logm $ "handleInfoProcessMonitorNotification called with: " ++ show n
+  logm $ "HroqGroups:handleInfoProcessMonitorNotification called with: " ++ show n
   let m = stMdict st
       g = stGdict st
 

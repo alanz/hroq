@@ -8,6 +8,7 @@ module Data.HroqQueueWatch
   queue_watch
 
   -- * Types
+  , Metric (..)
 
   -- * Debug
   -- , ping
@@ -27,15 +28,25 @@ import Control.Distributed.Process.Serializable()
 import Control.Exception hiding (try,catch)
 import Data.Binary
 import Data.Hroq
+import Data.HroqGroups
 import Data.HroqLogger
+import Data.HroqStatsGatherer
+import Data.Time.Calendar
+import Data.Time.Clock
 import Data.Typeable (Typeable)
 import GHC.Generics
 import System.Environment
+import Text.Regex.Base
+import Text.Regex.TDFA
 import qualified Data.Map as Map
 
-queue_watch :: t -> Process String
-queue_watch = undefined
 
+-- ---------------------------------------------------------------------
+
+data Metric = Size | Enq | Deq
+            deriving Show
+
+-- ---------------------------------------------------------------------
 {-
 
 -module(eroq_queue_watch).
@@ -49,7 +60,10 @@ queue_watch = undefined
 -define(EROQ_QUEUE_WATCH_USE_SIZE, size).
 -define(EROQ_QUEUE_WATCH_USE_ENQ,  enq).
 -define(EROQ_QUEUE_WATCH_USE_DEQ,  deq).
+-}
 
+-- ---------------------------------------------------------------------
+{-
 queue_watch(QueueWatchConstructs)->
 
     case preprocess_constructs(QueueWatchConstructs, []) of
@@ -66,17 +80,37 @@ queue_watch(QueueWatchConstructs)->
         {ok, TS ++ contruct_queue_watch_string(FinalDict, PreprocessedCons)}
 
     end.
+-}
 
+queue_watch :: [(String,String,Metric)] -> Process String
+queue_watch queueWatchConstructs = do
+  logm $ "HroqQueueWatch.queue_watch entered"
+  let preprocessedCons = preprocess_constructs queueWatchConstructs []
+  qs <- queues
+  ts <- make_timestamp
+  finalDict <- do_queue_watch_queues qs Map.empty preprocessedCons
+  return $ ts ++ (construct_queue_watch_string finalDict preprocessedCons)
+
+{-
 %Worker piggies
 make_timestamp()->
     {Year, Month, Day}     = erlang:date(),
     {Hour, Minute, Second} = erlang:time(),
     lists:flatten(io_lib:format("[~4.4.0w-~2.2.0w-~2.2.0w ~2.2.0w:~2.2.0w:~2.2.0w]", [Year, Month, Day, Hour, Minute, Second])).
-  
+-}
+
+
+make_timestamp :: Process String
+make_timestamp = do
+  now <- liftIO $ getCurrentTime
+  return (show now)
+
+-- ---------------------------------------------------------------------
+{-
 preprocess_constructs([], PreProcessedConstructs)->
     {ok, PreProcessedConstructs};
 preprocess_constructs([{Label, AppInfoRegExp, Metric} | T], PreProcessedConstructs)->
-    
+
     case re:compile(AppInfoRegExp) of
     {ok, CompiledRegexp} ->
 
@@ -94,7 +128,22 @@ preprocess_constructs([{Label, AppInfoRegExp, Metric} | T], PreProcessedConstruc
     _ ->
         {error, {regexp, Label, AppInfoRegExp}}
     end.
+-}
 
+preprocess_constructs ::
+  [(String, String, Metric)] -> [(String, Regex, Metric)] -> [(String, Regex, Metric)]
+preprocess_constructs [] preProcessedConstructs = preProcessedConstructs
+preprocess_constructs ((label,appInfoRegExp,metric):t) preProcessedConstructs
+  =  preprocess_constructs t preProcessedConstructs ++ [(label,compiledRegex,metric)]
+  where
+    mkr :: String -> Regex
+    mkr reg = makeRegex reg
+
+    compiledRegex = mkr appInfoRegExp
+
+
+-- ---------------------------------------------------------------------
+{-
 contruct_queue_watch_string(_, [])->
     "";
 contruct_queue_watch_string(Dict, [{Label, _, _} | T])->
@@ -107,7 +156,18 @@ contruct_queue_watch_string(Dict, [{Label, _, _} | T])->
     end,
 
     Tag ++ contruct_queue_watch_string(Dict, T).
+-}
+construct_queue_watch_string :: Map.Map String Integer -> [(String,Regex,Metric)] -> String
+construct_queue_watch_string _ [] = ""
+construct_queue_watch_string dict ((label,_,_):t)
+  = tag ++ construct_queue_watch_string dict t
+  where
+    tag = case Map.lookup label dict of
+     Just v  -> " " ++ label ++ " " ++ show v
+     Nothing -> " " ++ label ++ " 0"
 
+-- ---------------------------------------------------------------------
+{-
 increment_dict_value(Label, IncValue, Dict)->
 
     case dict:find(Label, Dict) of
@@ -118,14 +178,24 @@ increment_dict_value(Label, IncValue, Dict)->
     end,
 
     dict:store(Label, NewValue, Dict).
-    
+-}
+
+increment_dict_value ::
+  (Num a, Ord k) => k -> a -> Map.Map k a -> Map.Map k a
+increment_dict_value label incValue dict =
+  case Map.lookup label dict of
+    Just v  -> Map.insert label (v + incValue) dict
+    Nothing -> Map.insert label      incValue  dict
+
+-- ---------------------------------------------------------------------
+{-
 process_queue(_, Dict, [])->
     Dict;
 process_queue({AppInfo, Size, Enq, Deq}, Dict, [{Label, Regexp, Metric} | T])->
 
     case re:run(AppInfo, Regexp, [{capture, first}]) of
     {match, _} ->
-        
+
         case Metric of
         size ->
             NewDict = increment_dict_value(Label, Size, Dict);
@@ -140,27 +210,31 @@ process_queue({AppInfo, Size, Enq, Deq}, Dict, [{Label, Regexp, Metric} | T])->
     end,
 
     process_queue({AppInfo, Size, Enq, Deq}, NewDict, T).
+-}
 
+process_queue
+  :: QStats
+  -> Map.Map String Integer
+  -> [(String,Regex,Metric)]
+  -> Map.Map String Integer
+process_queue _ dict [] = dict
+process_queue qs@(QStats appInfo size enq deq) dict ((label,regexp,metric):t)
+   = process_queue qs newDict t
+  where
+    newDict = if matchTest regexp appInfo
+      then case metric of
+        Size -> increment_dict_value label size dict
+        Enq  -> increment_dict_value label enq  dict
+        Deq  -> increment_dict_value label deq  dict
+      else dict
+
+-- ---------------------------------------------------------------------
+{-
 do_queue_watch_queues([], Dict, _)->
     Dict;
 do_queue_watch_queues([QueueName | T], Dict, QueueWatchConstructs)->
 
-%    case catch(eroq_queue:get_stats(QueueName)) of
-%    {'EXIT', _} ->
-%        NewDict = Dict;
-%    QueueStats ->
-%        #eroq_queue_stats   {
-%                            app_info        = AppInfo,
-%                            queue_size      = Size,
-%                            enqueue_count   = Enq,
-%                            dequeue_count   = Deq
-%                            } = QueueStats,
-%
-%        NewDict = process_queue({AppInfo, Size, Enq, Deq}, Dict, QueueWatchConstructs)
-%    end,
-
-
-    NewDict = 
+    NewDict =
     case catch(eroq_stats_gatherer:get_queue_stats(QueueName)) of
     {ok, {AppInfo, Size, Enq, Deq}} ->
         process_queue({AppInfo, Size, Enq, Deq}, Dict, QueueWatchConstructs);
@@ -171,7 +245,21 @@ do_queue_watch_queues([QueueName | T], Dict, QueueWatchConstructs)->
     end,
 
     do_queue_watch_queues(T, NewDict, QueueWatchConstructs).
+-}
 
+do_queue_watch_queues ::
+  [QName] -> Map.Map String Integer-> [(String, Regex, Metric)]
+  -> Process (Map.Map String Integer)
+do_queue_watch_queues [] dict _ = return dict
+do_queue_watch_queues (queueName:t) dict queueWatchConstructs = do
+  mQueueStats <- get_queue_stats queueName
+  let newDict = case mQueueStats of
+        ReplyQStats queueStats -> process_queue queueStats dict queueWatchConstructs
+        ReplyQStatsNotFound -> dict
+  do_queue_watch_queues t newDict queueWatchConstructs
+
+-- ---------------------------------------------------------------------
+{-
 %-ifdef('TEST').
 %-include_lib("eunit/include/eunit.hrl").
 %

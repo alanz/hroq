@@ -58,20 +58,22 @@ import qualified Data.Map as Map
                                     ]).
 -}
 -- TODO: look at getting this via dyre http://hackage.haskell.org/package/dyre-0.8.2/docs/Config-Dyre.html
+eXAMPLE_QUEUE_WATCH_CONFIG :: [(String,String,Metric)]
 eXAMPLE_QUEUE_WATCH_CONFIG =
   [
     -- TAG     APPINFO   METRIC
-    ("MAIN", "^MAIN$", "size"),
-    ("MENQ", "^MAIN$", "enq"),
-    ("MDEQ", "^MAIN$", "deq"),
-    ("DLQ",  "^DLQ$",  "size")
+    ("MAIN", "^MAIN$", Size),
+    ("MENQ", "^MAIN$", Enq),
+    ("MDEQ", "^MAIN$", Deq),
+    ("DLQ",  "^DLQ$",  Size)
   ]
 
 {-
 -define(MONITOR_INTERVAL_MS, 30000).
 -}
 mONITOR_INTERVAL_MS :: Delay
-mONITOR_INTERVAL_MS = Delay $ milliSeconds 30000
+-- mONITOR_INTERVAL_MS = Delay $ milliSeconds 30000
+mONITOR_INTERVAL_MS = Delay $ milliSeconds 9000
 
 
 -- Call operations

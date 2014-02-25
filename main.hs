@@ -304,7 +304,7 @@ worker_mnesia ekg = do
   -- liftIO $ threadDelay (10*60*1000000) -- Ten minutes
   return ()
 
--- ---------------------------------------------------------------------  
+-- ---------------------------------------------------------------------
 
 {-
 startLocalNode :: IO LocalNode
@@ -320,7 +320,7 @@ startLocalNode = do
   return node
   where
     rtable :: RemoteTable
-    rtable = Data.HroqDlqWorkers.__remoteTable 
+    rtable = Data.HroqDlqWorkers.__remoteTable
            $ Control.Distributed.Process.Platform.__remoteTable
            $ initRemoteTable
 -}
