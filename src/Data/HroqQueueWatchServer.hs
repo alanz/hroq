@@ -10,13 +10,14 @@ module Data.HroqQueueWatchServer
 
   , queueWatchNoOpCallbackClosure
   -- * Types
-  , CallbackFun
+  -- , CallbackFun
 
   -- * Debug
   , ping
+  , noopFun
 
   -- * Remote Table
-  -- , Data.HroqQueueWatchServer.__remoteTable
+  , Data.HroqQueueWatchServer.__remoteTable
 
   ) where
 
@@ -83,21 +84,21 @@ instance Binary Ping where
 
 -- ---------------------------------------------------------------------
 
-type CallbackFun = (String -> Process ())
+-- type CallbackFun = (String -> Process ())
 
-data State = ST CallbackFun
+data State = ST (String -> Process ())
 
 emptyState :: State
 emptyState = ST noopFun
 
-noopFun :: CallbackFun
+noopFun :: (String -> Process ())
 noopFun str = do
   logm $ "HroqQueueWatchServer noopFun called with:[" ++ show str ++ "]"
   return ()
 
 -- ---------------------------------------------------------------------
 
-hroq_queue_watch_server :: Closure CallbackFun -> Process ()
+hroq_queue_watch_server :: Closure (String -> Process ()) -> Process ()
 hroq_queue_watch_server = start_queue_watch_server
 
 --------------------------------------------------------------------------------
@@ -138,7 +139,7 @@ start_link(CallbackFun) when is_function(CallbackFun,1) ->
 init([CallbackFun]) ->
     {ok, {CallbackFun}, ?MONITOR_INTERVAL_MS}.
 -}
-start_queue_watch_server :: Closure CallbackFun -> Process ()
+start_queue_watch_server :: Closure (String -> Process ()) -> Process ()
 start_queue_watch_server callbackFun = do
   logm $ "HroqQueueWatchServer:start_queue_watch_server entered"
   -- fun <- unClosure callbackFun
@@ -148,7 +149,7 @@ start_queue_watch_server callbackFun = do
   self <- getSelfPid
   register hroqQueueWatchServerProcessName self
   serve fun initFunc serverDefinition
-  where initFunc :: InitHandler CallbackFun State
+  where initFunc :: InitHandler (String -> Process ()) State
         initFunc fun = do
           logm $ "HroqQueueWatchServer:start.initFunc"
           return $ InitOk (ST fun) mONITOR_INTERVAL_MS
@@ -265,11 +266,11 @@ $(remotable [ 'hroq_queue_watch_server
 
 -- hroq_stats_gatherer_closure :: Closure (Process ())
 
-
-hroq_queue_watch_server_closure :: (Closure (String -> Process ())) -> Closure (Process ())
+-- hroq_queue_watch_server_closure :: (Closure (String -> Process ())) -> Closure (Process ())
+hroq_queue_watch_server_closure :: (Closure ((String -> Process ()))) -> Closure (Process ())
 hroq_queue_watch_server_closure callback = ( $(mkClosure 'hroq_queue_watch_server) callback)
 
-queueWatchNoOpCallbackClosure :: Closure (CallbackFun)
+queueWatchNoOpCallbackClosure :: Closure ((String -> Process ()))
 queueWatchNoOpCallbackClosure = ( $(mkStaticClosure 'noopFun) )
 
 -- EOF

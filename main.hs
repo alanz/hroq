@@ -79,9 +79,17 @@ worker_supervised = do
 
 
   sleepFor 1 Seconds
-  -- logm $ "worker_supervised about to start up queuewatch"
+{-
+  logm $ "worker_supervised about to start up queuewatch"
+
+  let  qwsc :: Closure (Process ())
+       qwsc = hroq_queue_watch_server_closure queueWatchNoOpCallbackClosure
+  fun <- unClosure qwsc
+  logm $ "worker_supervised about to start up queuewatch:unClosure done"
+  fun
   -- hroq_queue_watch_server queueWatchNoOpCallbackClosure
-  -- logm $ "worker_supervised about to start up queuewatch:done"
+  logm $ "worker_supervised about to start up queuewatch:done"
+-}
 
   Data.HroqQueueWatchServer.ping
 
@@ -334,6 +342,7 @@ startLocalNode = do
            $ Data.HroqConsumerTH.__remoteTable
            $ Data.HroqDlqWorkers.__remoteTable
            $ Data.HroqGroups.__remoteTable
+           $ Data.HroqQueueWatchServer.__remoteTable
            $ Data.HroqSampleWorker.__remoteTable
            $ Data.HroqStatsGatherer.__remoteTable
            $ initRemoteTable

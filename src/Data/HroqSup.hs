@@ -88,7 +88,7 @@ init([AlarmFun, QueueWatchFun]) ->
 
 -- ----------------------------------------------------------------------
 
-childSpec :: a -> Closure CallbackFun -> [ChildSpec]
+childSpec :: a -> Closure (String -> Process ()) -> [ChildSpec]
 childSpec alarmFun queueWatchFun =
     [
       defaultWorker hroqStatsGatherer
@@ -99,10 +99,9 @@ childSpec alarmFun queueWatchFun =
     ]
   where
     hroqStatsGatherer = RunClosure hroq_stats_gatherer_closure
-    hroqGroups = RunClosure hroq_groups_closure
-    hroqAlarms = RunClosure hroq_alarm_server_closure
-    -- hroqQueueWatch = RunClosure (hroq_queue_watch_server_closure queueWatchFun)
-    hroqQueueWatch = RunClosure (hroq_queue_watch_server_closure undefined)
+    hroqGroups        = RunClosure hroq_groups_closure
+    hroqAlarms        = RunClosure hroq_alarm_server_closure
+    hroqQueueWatch    = RunClosure (hroq_queue_watch_server_closure queueWatchNoOpCallbackClosure)
 
 defaultWorker :: ChildStart -> ChildSpec
 defaultWorker clj =
