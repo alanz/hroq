@@ -118,6 +118,8 @@ start_app = do
     -- eroq_sup:start_link(AlarmFun, QWFun).
 
     supPid <- hroq_start_link alarmFun qwFun
+    -- supPid <- hroq_start_link undefined undefined
+
     return ()
 
 

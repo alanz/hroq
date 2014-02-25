@@ -66,9 +66,8 @@ worker_supervised ekg = do
   logm "mnesia started"
 
   logm "worker_supervised starting"
-  pid <- hroq_start_link undefined undefined
-  -- pid <- spawnLocal $ hroq_stats_gatherer
-
+  pid <- App.start_app
+  -- pid <- hroq_start_link undefined undefined
   logm $ "worker_supervised started:pid=" ++ show pid
   sleepFor 2 Seconds
 
