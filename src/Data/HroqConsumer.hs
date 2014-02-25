@@ -250,12 +250,6 @@ instance Binary ConsumerReply where
       'N' -> liftM2 ConsumerReplyRetryNewParams get get
       'E' -> return ConsumerReplyOk
 
-instance Binary NominalDiffTime where
-  put ndt = put ((round ndt)::Integer)
-  get = do
-    val <- get
-    return $ microsecondsToNominalDiffTime val
-
 -- ---------------------------------------------------------------------
 
 data PauseWaitRsp = PauseWaitRsp String

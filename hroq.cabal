@@ -67,6 +67,9 @@ executable hroq
                        , time
                        , hslogger
                        , old-locale
+                       -- , regex-pcre-builtin
+                       , regex-base
+                       , regex-tdfa
 
 test-suite StatsGathererTests
   type:            exitcode-stdio-1.0
@@ -95,6 +98,37 @@ test-suite StatsGathererTests
   ghc-options:     -Wall -threaded -rtsopts -with-rtsopts=-N
   -- extensions:      CPP
   main-is:         TestStatsGatherer.hs
+
+
+test-suite AlarmServerTests
+  type:            exitcode-stdio-1.0
+  x-uses-tf:       true
+  build-depends:
+                     base >= 4.4 && < 5
+                   , HUnit
+                   , RefSerialize
+                   , binary
+                   , bytestring
+                   , containers
+                   , distributed-process
+                   , distributed-process-platform
+                   , ekg
+                   , hslogger
+                   , network-transport
+                   , network-transport-tcp
+                   , old-locale
+                   , rematch
+                   , stm
+                   , test-framework
+                   , test-framework-hunit
+                   , time
+                   , regex-base
+                   , regex-tdfa
+  hs-source-dirs:
+                   tests src
+  ghc-options:     -Wall -threaded -rtsopts -with-rtsopts=-N
+  -- extensions:      CPP
+  main-is:         TestAlarmServer.hs
 
 
 source-repository head

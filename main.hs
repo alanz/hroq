@@ -67,6 +67,15 @@ worker_supervised = do
 
   logm $ "worker_supervised started:pid=" ++ show pid
   sleepFor 2 Seconds
+
+  -- check the alarm server is alive
+  logm $ "worker_supervised alarm server check starting"
+  rc <- check
+  logm $ "worker_supervised alarm server check done:got" ++ show rc
+
+  rt <- triggers
+  logm $ "worker_supervised alarm server triggers done:got" ++ show rt
+
   ping
 
   logm $ "starting queue group stuff"

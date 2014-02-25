@@ -142,6 +142,12 @@ instance Serialize QEntry where
   showp = showpBinary
   readp = readpBinary
 
+instance Binary NominalDiffTime where
+  put ndt = put ((round ndt)::Integer)
+  get = do
+    val <- get
+    return $ microsecondsToNominalDiffTime val
+
 -- ---------------------------------------------------------------------
 
 type MetaKey = QName

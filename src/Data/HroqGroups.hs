@@ -123,21 +123,22 @@ leave nameGroup = do
 queues() ->
     gen_server:call(?MODULE, {members, eroq_queue}, ?GEN_SERVER_TIMEOUT_MS).
 -}
-queues :: Process GetMembersReply
+queues :: Process [QName]
 queues = do
   pid <- getServerPid
-  call pid (GetMembers TQueue)
-
+  (QueueMembers ms) <- call pid (GetMembers TQueue)
+  return ms
 -- -------------------------------------
 
 {-
 consumers() ->
     gen_server:call(?MODULE, {members, eroq_consumer}, ?GEN_SERVER_TIMEOUT_MS).
 -}
-consumers :: Process GetMembersReply
+consumers :: Process [ConsumerName]
 consumers = do
   pid <- getServerPid
-  call pid (GetMembers TConsumer)
+  (ConsumerMembers ms) <- call pid (GetMembers TConsumer)
+  return ms
 
 -- -------------------------------------
 {-
@@ -145,10 +146,11 @@ dlq_consumers() ->
     gen_server:call(?MODULE, {members, eroq_dlq_consumer}, ?GEN_SERVER_TIMEOUT_MS).
 
 -}
-dlq_consumers :: Process GetMembersReply
+dlq_consumers :: Process [ConsumerName]
 dlq_consumers = do
   pid <- getServerPid
-  call pid (GetMembers TDlqConsumer)
+  (DlqConsumerMembers ms) <- call pid (GetMembers TDlqConsumer)
+  return ms
 
 -- ---------------------------------------------------------------------
 

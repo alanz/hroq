@@ -24,7 +24,7 @@ module Data.HroqAlarmServer
 
 import Control.Distributed.Process hiding (call)
 import Control.Distributed.Process.Closure
-import Control.Distributed.Process.Platform hiding (__remoteTable,monitor)
+-- import Control.Distributed.Process.Platform hiding (__remoteTable,monitor)
 import Control.Distributed.Process.Platform.ManagedProcess hiding (runProcess)
 import Control.Distributed.Process.Platform.Time
 import Control.Distributed.Process.Serializable()
@@ -32,14 +32,16 @@ import Control.Exception hiding (try,catch)
 import Data.Binary
 import Data.Hroq
 import Data.HroqGroups
-import Data.HroqStatsGatherer
-import Data.HroqUtil
 import Data.HroqLogger
-import Data.Time.Clock
+import Data.HroqStatsGatherer
+-- import Data.HroqUtil
 import Data.Time.Calendar
+import Data.Time.Clock
 import Data.Typeable (Typeable)
 import GHC.Generics
 import System.Environment
+import Text.Regex.Base
+import Text.Regex.TDFA
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 
@@ -60,13 +62,9 @@ data TriggerParams = TriggerSize Integer Integer
   deriving (Typeable, Generic, Eq, Show)
 instance Binary TriggerParams where
 
-instance Binary NominalDiffTime where
-  put nd = put 'N' >> put (toRational nd)
-  get = do
-    sel <- get
-    v <- get
-    case sel of
-      'N' -> return (fromRational v)
+data Alarms = A (Map.Map String Integer)
+  deriving  (Typeable, Generic, Eq, Show)
+instance Binary Alarms where
 
 -- Call and Cast request types.
 
@@ -82,12 +80,13 @@ instance Binary Triggers where
 
 data State = ST { stLastCheck :: UTCTime
                 , stStatsHistory :: StatsDict
-                , stCallbackFun :: [String] -> Process ()
+                , stCallbackFun :: Alarms -> Process ()
                 , stTriggers :: [AlarmTrigger]
                 }
 
--- | For each queue, keep track of last size and dequeueCount, at timestamp
-type StatsDict = Map.Map QName (Integer,Integer,UTCTime)
+-- | For each queue, keep track of /* last size, */ dequeueCount and timestamp
+-- type StatsDict = Map.Map QName (Integer,Integer,UTCTime)
+type StatsDict = Map.Map QName (Integer,UTCTime)
 
 -- | appinfo,qname, qsize,dequeueCount
 type Internal = (String,QName,Integer,Integer)
@@ -115,7 +114,7 @@ mONITOR_INTERVAL_MS = Delay $ milliSeconds 3000
 -- TODO: look at getting this via dyre http://hackage.haskell.org/package/dyre-0.8.2/docs/Config-Dyre.html
 eXAMPLE_QUEUE_ALARM_CONFIG =
   [
-    QAC "MAIN_QUEUE_STATIC" (Set.fromList ["MAIN"]) (Include "") [(P Static   60)]
+    QAC "MAIN_QUEUE_STATIC" (Set.fromList ["MAIN"]) (Include "") [(P Static  60)]
   , QAC "MAIN_QUEUE_STATIC" (Set.fromList ["DLQ"])  (Include "") [(P MaxSize 0)]
   ]
 
@@ -126,10 +125,12 @@ data QueueAlarmConfig = QAC { acName :: String
                             }
 
 data Constraint = Include String
+                | Exclude String
 
 data Param = P ParamType Integer
 
 data ParamType = Static | MaxSize
+               deriving (Eq,Show)
 
 -- ---------------------------------------------------------------------
 
@@ -147,7 +148,7 @@ check() ->
     gen_server:call(?MODULE, check, infinity).
 -}
 
-check :: Process ()
+check :: Process Delay
 check = do
   pid <- getServerPid
   call pid Check
@@ -161,7 +162,7 @@ triggers() ->
 triggers :: Process [AlarmTrigger]
 triggers = do
   pid <- getServerPid
-  call pid Check
+  call pid Triggers
 
 
 -- ---------------------------------------------------------------------
@@ -218,7 +219,7 @@ serverDefinition = defaultProcess {
      --       {logm "HroqStatsGatherer:timout exit"; stop $ ExitOther "timeout az"}
      , timeoutHandler = handleTimeout
      , shutdownHandler = \_ reason -> do
-           { logm $ "HroqStatsGatherer terminateHandler:" ++ (show reason) }
+           { logm $ "HroqAlarmServer terminateHandler:" ++ (show reason) }
     } :: ProcessDefinition State
 
 -- ---------------------------------------------------------------------
@@ -353,7 +354,7 @@ do_alarm_processing :: State -> Process (Either String State)
 do_alarm_processing st = do
   logm $ "do_alarm_processing entered"
 
-  (QueueMembers qs) <- queues
+  qs <- queues
   queueStats <- traverse_get_queue_stats qs []
   -- TODO: use something like dyre to look this up
   mAcfg <- liftIO $ lookupEnv "alarm_config"
@@ -366,7 +367,7 @@ do_alarm_processing st = do
       fun       = stCallbackFun st
 
   (newStatsDict,alarmList,alarmTriggers)
-     <- traverse_process_all_queues statsDict [] [] queueStats alarmConfig
+     <- traverse_process_all_queues statsDict (A Map.empty) [] queueStats alarmConfig
 
   let newState = st {stStatsHistory = newStatsDict, stTriggers = alarmTriggers }
 
@@ -389,11 +390,11 @@ traverse_process_all_queues(StatsDict, AlarmList, AlarmTriggers, [], _)->
 -}
 traverse_process_all_queues
   :: StatsDict -- statsDict
-  -> [String] -- alarmList
+  -> Alarms -- alarmList
   -> [AlarmTrigger] -- alarmTriggers
   -> [Internal]
   -> [QueueAlarmConfig]
-  -> Process (StatsDict,[String],[AlarmTrigger])
+  -> Process (StatsDict,Alarms,[AlarmTrigger])
 traverse_process_all_queues statsDict alarmList alarmTriggers (h:t) alarmConfig = do
   let (appInfo,queueName,queueSize,deqCount) = h
   (newStatsDict,newAlarmList,newAlarmTriggers)
@@ -442,7 +443,10 @@ get_alarm_param(ParamName, AlarmParams)->
 -}
 
 get_alarm_param :: ParamType -> [Param] -> Maybe Integer
-get_alarm_param paramName alarmParams = undefined
+get_alarm_param paramName alarmParams =
+  case (filter (\(P pt _) -> pt == paramName) alarmParams) of
+    [] -> Nothing
+    (P _ v:_) -> Just v
 
 -- ---------------------------------------------------------------------
 {-
@@ -462,7 +466,15 @@ is_excluded(StringQueueName, {exclude, Regex})->
     end.
 -}
 
-is_excluded = undefined
+-- TODO: compile the regex on startup
+is_excluded :: QName -> Constraint -> Bool
+is_excluded (QN stringQueueName) (Include regex) =
+  not $ matchTest (mkr regex) stringQueueName
+is_excluded (QN stringQueueName) (Exclude regex) =
+        matchTest (mkr regex) stringQueueName
+
+mkr :: String -> Regex
+mkr reg = makeRegex reg
 
 -- ---------------------------------------------------------------------
 {-
@@ -474,6 +486,10 @@ get_alarm_count(AlarmName, AlarmList)->
         0
     end.
 -}
+
+get_alarm_count :: String -> Alarms -> Integer
+get_alarm_count alarmName (A alarmList)
+  = Map.findWithDefault 0 alarmName alarmList
 
 -- ---------------------------------------------------------------------
 {-
@@ -487,7 +503,11 @@ inc_alarm_count(AlarmName, AlarmList)->
     end.
 -}
 
-inc_alarm_count = undefined
+inc_alarm_count :: String -> Alarms -> Alarms
+inc_alarm_count name (A alarms) =
+  case Map.lookup name alarms of
+    Just v  -> A $ Map.insert name (v+1) alarms
+    Nothing -> A $ Map.insert name 1 alarms
 
 -- ---------------------------------------------------------------------
 {-
@@ -500,10 +520,10 @@ get_last_stats(StringQueueName, DequeueCount, StatsDict)->
     end.
 -}
 
-get_last_stats :: QName -> Integer -> StatsDict -> Process (Integer,Integer,UTCTime)
+get_last_stats :: QName -> Integer -> StatsDict -> Process (Integer,UTCTime)
 get_last_stats stringQueueName dequeueCount statsDict = do
   now <- liftIO $ getCurrentTime
-  return undefined
+  return $ Map.findWithDefault (dequeueCount,now) stringQueueName statsDict
 
 -- ---------------------------------------------------------------------
 {-
@@ -562,11 +582,11 @@ determine_alarms
   -> Integer
   -> [QueueAlarmConfig]
   -> StatsDict
-  -> [String]
+  -> Alarms
   -> [AlarmTrigger]
-  -> Process (StatsDict, [String], [AlarmTrigger])
+  -> Process (StatsDict, Alarms, [AlarmTrigger])
 determine_alarms queueType stringQueueName queueSize dequeueCount (h:t) statsDict alarmList alarmTriggers = do
-  let (QAC alarmName  queueTypeList exclusionRegex alarmParams) = h
+  let (QAC alarmName queueTypeList exclusionRegex alarmParams) = h
 
   --  QueueTypeMatch = lists:member(QueueType, QueueTypeList),
   let queueTypeMatch = Set.member queueType queueTypeList
@@ -589,7 +609,7 @@ determine_alarms queueType stringQueueName queueSize dequeueCount (h:t) statsDic
 
             case get_alarm_param Static alarmParams of
               Just maxStaticTimeSecs -> do
-                (lastQueueSize,lastDeqCount,lastChangeTimestamp) <- get_last_stats stringQueueName dequeueCount statsDict
+                (lastDeqCount,lastChangeTimestamp) <- get_last_stats stringQueueName dequeueCount statsDict
 
                 if (lastDeqCount == dequeueCount) && (queueSize > 0)
                   then do
@@ -599,10 +619,10 @@ determine_alarms queueType stringQueueName queueSize dequeueCount (h:t) statsDic
                         then return (inc_alarm_count alarmName maxSizeAlarmList, (AT TriggerQueue stringQueueName (TriggerStatic maxStaticTimeSecs queueStaticAgeSecs)):maxSizeAlarmTriggers)
                         else return (maxSizeAlarmList,maxSizeAlarmTriggers)
 
-                    return (Map.insert stringQueueName (lastQueueSize,lastDeqCount, lastChangeTimestamp) statsDict, staticAlarmList, staticAlarmTriggers)
+                    return (Map.insert stringQueueName ({- lastQueueSize,-} lastDeqCount,lastChangeTimestamp) statsDict, staticAlarmList, staticAlarmTriggers)
 
                   else
-                     return (Map.insert stringQueueName (queueSize,dequeueCount, now) statsDict, maxSizeAlarmList, maxSizeAlarmTriggers)
+                     return (Map.insert stringQueueName ({- queueSize, -}dequeueCount, now) statsDict, maxSizeAlarmList, maxSizeAlarmTriggers)
 
               Nothing ->
                     return (statsDict, maxSizeAlarmList, maxSizeAlarmTriggers)

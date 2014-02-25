@@ -10,7 +10,7 @@ import Control.Concurrent.MVar
 import Control.Exception (SomeException)
 import Control.Distributed.Process hiding (call)
 import Control.Distributed.Process.Node
-import Control.Distributed.Process.Platform hiding (__remoteTable, monitor, send, nsend)
+import Control.Distributed.Process.Platform hiding (monitor, send, nsend)
 import Control.Distributed.Process.Platform.ManagedProcess hiding (runProcess)
 import Control.Distributed.Process.Platform.Test
 import Control.Distributed.Process.Platform.Time
@@ -21,6 +21,8 @@ import Control.Distributed.Process.Platform.Timer
 import Data.Hroq
 import qualified Data.HroqStatsGatherer as SG
 import qualified Data.HroqGroups as G
+import qualified Data.HroqAlarmServer as A
+import Data.HroqAlarmServer (__remoteTable)
 
 #if ! MIN_VERSION_base(4,6,0)
 import Prelude hiding (catch)
@@ -39,7 +41,7 @@ import Control.Monad (void)
 logm = say
 
 -- --------------------------------------------------------------------
--- Testing HroqStatsGatherer
+-- Testing HroqAlarmServer
 -- ---------------------------------------------------------------------
 
 testQueueStats :: ProcessId -> TestResult Int -> Process ()
@@ -167,6 +169,17 @@ tests transport = do
                localNode 5 (testGroupsDlqConsumers sg_pid)))
           ]
       ]
+
+rtable :: RemoteTable
+rtable = Control.Distributed.Process.Platform.__remoteTable
+       $ Data.HroqAlarmServer.__remoteTable
+       -- $ Data.HroqConsumerTH.__remoteTable
+       -- $ Data.HroqDlqWorkers.__remoteTable
+       -- $ Data.HroqGroups.__remoteTable
+       -- $ Data.HroqSampleWorker.__remoteTable
+       -- $ Data.HroqStatsGatherer.__remoteTable
+       $ initRemoteTable
+
 
 main :: IO ()
 main = testMain $ tests
