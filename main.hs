@@ -52,7 +52,7 @@ main = do
   -- runProcess node (worker_consumer ekg)
   -- runProcess node (worker_mnesia ekg)
 
-  runProcess node worker_supervised
+  runProcess node (worker_supervised ekg)
 
   closeLocalNode node
 
@@ -60,8 +60,11 @@ main = do
 
 -- ---------------------------------------------------------------------
 
-worker_supervised :: Process ()
-worker_supervised = do
+worker_supervised :: EKG.Server ->  Process ()
+worker_supervised ekg = do
+  mnesiaSid <- startHroqMnesia ekg
+  logm "mnesia started"
+
   logm "worker_supervised starting"
   pid <- hroq_start_link undefined undefined
   -- pid <- spawnLocal $ hroq_stats_gatherer
@@ -79,17 +82,6 @@ worker_supervised = do
 
 
   sleepFor 1 Seconds
-{-
-  logm $ "worker_supervised about to start up queuewatch"
-
-  let  qwsc :: Closure (Process ())
-       qwsc = hroq_queue_watch_server_closure queueWatchNoOpCallbackClosure
-  fun <- unClosure qwsc
-  logm $ "worker_supervised about to start up queuewatch:unClosure done"
-  fun
-  -- hroq_queue_watch_server queueWatchNoOpCallbackClosure
-  logm $ "worker_supervised about to start up queuewatch:done"
--}
 
   Data.HroqQueueWatchServer.ping
 
@@ -102,7 +94,29 @@ worker_supervised = do
   q2 <- queues
   logm $ "queues:q1=" ++ show q2
 
-  sleepFor 5 Seconds
+
+  let qNameA = QN "queue_a"
+  let qNameB = QN "queue_b"
+
+  qSida <- startQueue (qNameA,"MAIN1","blah",ekg)
+  logm $ "queue started:" ++ (show qSida)
+
+
+  qSidb <- startQueue (qNameB,"MAIN","blah",ekg)
+  logm $ "queue started:" ++ (show qSidb)
+
+
+  logm $ "starting queue group stuff"
+  q2a <- queues
+  logm $ "queues:q2=" ++ show q2a
+
+
+  logm "enqueue done b starting"
+  mapM_ (\n -> enqueue qNameB (qval $ "bar" ++ (show n))) [1..10]
+  logm "enqueue done b 1"
+
+
+  sleepFor 500 Seconds
   logm "worker_supervised done"
 
   return ()
