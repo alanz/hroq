@@ -428,7 +428,7 @@ initFunc :: InitHandler EKG.Server State
 initFunc ekg = do
   let s = (MnesiaState Map.empty Map.empty Map.empty ekg)
   ems <- liftIO $ Exception.try $ decodeFileSchema (tableNameToFileName schemaTable)
-  logm $ "initFunc:ems=" ++ (show ems)
+  logm $ "HroqMnesia.initFunc:ems=" ++ (show ems)
   let m = case ems of
             Left (e :: SomeException) -> Map.empty
             Right [ms] -> ms
@@ -508,7 +508,7 @@ serverDefinition = defaultProcess {
     , infoHandlers =
         [
         -- handleInfo_ (\(ProcessMonitorNotification _ _ r) -> logm $ show r >> continue_)
-         handleInfo (\dict (ProcessMonitorNotification _ _ r) -> do {logm $ show r; continue dict })
+         handleInfo (\dict (ProcessMonitorNotification _ _ r) -> do {logm $ "HroqMnesia:" ++ show r; continue dict })
         ]
      , timeoutHandler = \_ _ -> stop $ ExitOther "timeout az"
      , shutdownHandler = \_ reason -> do { logm $ "HroqMnesia terminateHandler:" ++ (show reason) }
@@ -644,24 +644,24 @@ handleLogState s _ = do
 
 do_change_table_copy_type :: State -> TableName -> TableStorage -> Process State
 do_change_table_copy_type s bucket DiscOnlyCopies = do
-  logm $ "change_table_copy_type to DiscOnlyCopies for:" ++ (show (bucket))
-  let (TableMeta _ st rt) = getMetaForTableDefault s bucket
-  logm $ "change_table_copy_type:(st,rt)=" ++ (show (st,rt))
+  -- logm $ "HroqMnesia.change_table_copy_type to DiscOnlyCopies for:" ++ (show (bucket))
+  let (TableMeta _ _st rt) = getMetaForTableDefault s bucket
+  -- logm $ "HroqMnesia.change_table_copy_type:(st,rt)=" ++ (show (st,rt))
   let s' = case rt of
             RecordTypeMeta       -> s {sRamMeta = Map.delete bucket (sRamMeta s)}
             RecordTypeQueueEntry -> s {sRamQ    = Map.delete bucket (sRamQ s)}
             -- RecordTypeQueueEntry -> s {sRamQ    = strictify $ Map.delete bucket (sRamQ s)}
             _                    -> s
-  -- logm $ "change_table_copy_type:s'=" ++ (show s')
+  -- logm $ "HroqMnesia.change_table_copy_type:s'=" ++ (show s')
 
-  let (TableMeta size _ rt) = getMetaForTableDefault s' bucket
-  let s'' = s' { sTableInfo = Map.insert bucket (TableMeta size DiscOnlyCopies rt) (sTableInfo s')}
-  -- logm $ "change_table_copy_type:s''=" ++ (show (s''))
+  let (TableMeta size _ rt2) = getMetaForTableDefault s' bucket
+  let s'' = s' { sTableInfo = Map.insert bucket (TableMeta size DiscOnlyCopies rt2) (sTableInfo s')}
+  -- logm $ "HroqMnesia.change_table_copy_type:s''=" ++ (show (s''))
   persistTableInfo (sTableInfo s'')
   return s''
 
 do_change_table_copy_type s bucket storageType = do
-  logm $ "change_table_copy_type undefined for:" ++ (show (bucket,storageType))
+  logm $ "HroqMnesia.change_table_copy_type undefined for:" ++ (show (bucket,storageType))
   return s
 
 mySyncCheck :: Integer -> Integer -> Integer -> Bool
@@ -671,25 +671,23 @@ mySyncCheck _ _ _ = True
 
 persistTableInfo :: Map.Map TableName TableMeta -> Process ()
 persistTableInfo ti = do
-  logm $ "persistTableInfo starting for:" ++ (show ti)
-  -- liftIO $ threadDelay (1*1000000) -- 1 seconds
+  logt $ "HroqMnesia.persistTableInfo starting for"
+  -- logm $ "HroqMnesia.persistTableInfo starting for:" ++ (show ti)
   res <- liftIO $ Exception.try $ defaultWrite (tableNameToFileName schemaTable) (encode ti)
-  -- liftIO $ threadDelay (1*1000000) -- 1 seconds
   case res of
-    Left (e :: SomeException) -> logm $ "persistTableInfo:error:" ++ (show e)
-    Right _ -> logm $ "persistTableInfo done"
-  -- liftIO $ threadDelay (1*1000000) -- 1 seconds
+    Left (e :: SomeException) -> logm $ "HroqMnesia.persistTableInfo:error:" ++ (show e)
+    Right _ -> logt $ "HroqMnesia.persistTableInfo done"
 
 -- ---------------------------------------------------------------------
 
 -- |Record the table details into the meta information.
 do_create_table :: State -> TableStorage -> TableName -> RecordType -> Process State
 do_create_table s storage name recordType = do
-  logm $ "create_table:" ++ (show (name,storage,recordType))
+  -- logm $ "HroqMnesia.create_table:" ++ (show (name,storage,recordType))
   -- TODO: check for clash with pre-existing, both in meta/state and
   --       on disk
   let ti' = Map.insert name (TableMeta Nothing storage recordType) (sTableInfo s)
-  logm $ "do_create_table:ti'=" ++ (show ti')
+  -- logm $ "HroqMnesia.do_create_table:ti'=" ++ (show ti')
 
   -- TODO: use an incremental write, rather than full dump
   -- TODO: check result?
@@ -700,7 +698,7 @@ do_create_table s storage name recordType = do
 
 do_delete_table :: State -> TableName -> Process State
 do_delete_table s name = do
-  logm $ "delete_table:" ++ (show name)
+  logm $ "HroqMnesia.delete_table:" ++ (show name)
   liftIO $ defaultDelete $ tableNameToFileName name
   let ti' = Map.delete name (sTableInfo s)
   return $ s {sTableInfo = ti'}
@@ -710,13 +708,13 @@ do_delete_table s name = do
 -- |Create a new schema
 do_create_schema :: State -> Process State
 do_create_schema s = do
-  logm $ "undefined create_schema"
+  logm $ "HroqMnesia.undefined create_schema"
   return s
 
 -- |Delete the schema
 do_delete_schema :: State -> Process State
 do_delete_schema s = do
-  logm $ "undefined delete_schema"
+  logm $ "HroqMnesia.undefined delete_schema"
   return s
 
 -- ---------------------------------------------------------------------
@@ -725,7 +723,7 @@ do_delete_schema s = do
 -- Currently only used for the meta table, which only has one entry in it
 do_dirty_write :: State -> TableName -> Meta -> Process State
 do_dirty_write s tableName record = do
-  logm $ "dirty_write:" ++ (show (tableName,record))
+  -- logm $ "HroqMnesia.dirty_write:" ++ (show (tableName,record))
   liftIO $ defaultWrite (tableNameToFileName tableName) (encode record)
   let s' = insertEntryMeta s tableName record
   return s'
@@ -733,9 +731,9 @@ do_dirty_write s tableName record = do
 do_dirty_write_q ::
    State -> TableName -> QEntry -> Process State
 do_dirty_write_q s tableName record = do
-  logm $ "dirty_write_q:" ++ (show (tableName,record))
+  -- logm $ "HroqMnesia.dirty_write_q:" ++ (show (tableName,record))
 
-  -- logm $ "not doing physical write" -- ++AZ++
+  -- logm $ "HroqMnesia.not doing physical write" -- ++AZ++
   liftIO $ defaultAppend (tableNameToFileName tableName) (encode record)
 
   let s' = insertEntryQ s tableName record
@@ -757,15 +755,15 @@ do_dirty_write_ls s tableName record = do
 
 do_dirty_read :: TableName -> MetaKey -> Process (Maybe Meta)
 do_dirty_read tableName keyVal = do
-  logm $ "dirty_read:" ++ (show (tableName)) -- ,keyVal))
+  -- logm $ "HroqMnesia.dirty_read:" ++ (show (tableName)) -- ,keyVal))
   ems <- liftIO $ Exception.try $ decodeFileMeta (tableNameToFileName tableName)
   case ems of
     Left (e::IOError) -> do
-      logm $ "do_dirty_read e " ++ (show keyVal) ++ ":" ++ (show e)
+      logm $ "HroqMnesia.do_dirty_read e " ++ (show keyVal) ++ ":" ++ (show e)
       return Nothing
     Right ms -> do
       let ms' = filter (\(MAllBuckets key _ _) -> key == keyVal) ms
-      logm $ "do_dirty_read ms' " ++ (show keyVal) ++ ":" ++ (show ms')
+      -- logm $ "HroqMnesia.do_dirty_read ms' " ++ (show keyVal) ++ ":" ++ (show ms')
       if ms' == [] then return Nothing
                    else return $ Just (head ms')
 
@@ -773,16 +771,16 @@ do_dirty_read tableName keyVal = do
 
 do_dirty_read_q :: TableName -> QKey -> Process (Maybe QEntry)
 do_dirty_read_q tableName keyVal = do
-  logm $ "dirty_read_q:" ++ (show (tableName)) -- ,keyVal))
+  -- logm $ "HroqMnesia.dirty_read_q:" ++ (show (tableName)) -- ,keyVal))
   -- TODO: check if this is in the RAM cache first
   ems <- liftIO $ Exception.try $ decodeFileQEntry (tableNameToFileName tableName)
   case ems of
     Left (e::IOError) -> do
-      logm $ "do_dirty_read_q e " ++ (show keyVal) ++ ":" ++ (show e)
+      logm $ "HroqMnesia.do_dirty_read_q e " ++ (show keyVal) ++ ":" ++ (show e)
       return Nothing
     Right ms -> do
       let ms' = filter (\(QE key _) -> key == keyVal) ms
-      logm $ "do_dirty_read_q ms' " ++ (show keyVal) ++ ":" ++ (show ms')
+      -- logm $ "HroqMnesia.do_dirty_read_q ms' " ++ (show keyVal) ++ ":" ++ (show ms')
       if ms' == [] then return Nothing
                    else return $ Just (head ms')
 
@@ -809,7 +807,7 @@ do_dirty_read_ls tableName keyVal = do
 
 do_dirty_delete_q :: State -> TableName -> QKey -> Process (State)
 do_dirty_delete_q s tableName keyVal = do
-  logm $ "dirty_delete_q:" ++ (show (tableName,keyVal)) -- ,keyVal))
+  logm $ "HroqMnesia.dirty_delete_q:" ++ (show (tableName,keyVal)) -- ,keyVal))
   -- if we have a ramQ version, delete it from there and then dump the
   -- whole thing to disk.
   vals <- if Map.member tableName (sRamQ s)
@@ -826,19 +824,19 @@ do_dirty_delete_q s tableName keyVal = do
             return ()
     _ -> do liftIO $ defaultWrite (tableNameToFileName tableName) (encode $ head vals')
             mapM_ (\v -> liftIO $ defaultAppend (tableNameToFileName tableName) (encode v)) $ tail vals'
-  logm $ "dirty_delete_q:done"
+  -- logm $ "HroqMnesia.dirty_delete_q:done"
   return s'
 
 -- ---------------------------------------------------------------------
 
 loadTableIntoRamQ :: TableName -> Process [QEntry]
 loadTableIntoRamQ table = do
-  logm $ "loadTableIntoRamQ:" ++ (show table)
+  logm $ "HroqMnesia.loadTableIntoRamQ:" ++ (show table)
   ems <- liftIO $ Exception.try $ decodeFileQEntry (tableNameToFileName table)
-  logm $ "loadTableIntoRamQ:ems=" ++ (show ems)
+  logm $ "HroqMnesia.loadTableIntoRamQ:ems=" ++ (show ems)
   case ems of
     Left (e :: IOError) -> do
-      logm $ "loadTableIntoRamQ:error=" ++ (show e)
+      logm $ "HroqMnesia.loadTableIntoRamQ:error=" ++ (show e)
       return []
     Right ms -> return $ ms
 
@@ -875,12 +873,12 @@ do_dirty_delete_ls s tableName keyVal = do
 
 loadTableIntoRamLS :: TableName -> Process [ConsumerMessage]
 loadTableIntoRamLS table = do
-  logm $ "loadTableIntoRamLS:" ++ (show table)
+  logm $ "HroqMnesia.loadTableIntoRamLS:" ++ (show table)
   ems <- liftIO $ Exception.try $ decodeFileConsumerMessage (tableNameToFileName table)
-  logm $ "loadTableIntoRamLS:ems=" ++ (show ems)
+  logm $ "HroqMnesia.loadTableIntoRamLS:ems=" ++ (show ems)
   case ems of
     Left (e :: IOError) -> do
-      logm $ "loadTableIntoRamLs:error=" ++ (show e)
+      logm $ "HroqMnesia.loadTableIntoRamLs:error=" ++ (show e)
       return []
     Right ms -> return $ ms
 
@@ -889,62 +887,62 @@ loadTableIntoRamLS table = do
 
 do_dirty_all_keys :: TableName -> Process [QKey]
 do_dirty_all_keys tableName = do
-  logm $ "unimplemented dirty_all_keys:" ++ (show tableName)
+  logm $ "HroqMnesia.unimplemented dirty_all_keys:" ++ (show tableName)
   return []
 
 -- ---------------------------------------------------------------------
 
 do_wait_for_tables :: State -> [TableName] -> Delay -> Process State
 do_wait_for_tables s tables _maxWait = do
-  logm $ "wait_for_tables:sTableInfo=" ++ (show (sTableInfo s))
+  logm $ "HroqMnesia.wait_for_tables:sTableInfo=" ++ (show (sTableInfo s))
   s' <- foldM waitForTable s tables
-  logm $ "do_wait_for_tables:done: sTableInfo'=" ++ (show (sTableInfo s'))
+  logm $ "HroqMnesia.do_wait_for_tables:done: sTableInfo'=" ++ (show (sTableInfo s'))
   return s'
 
 
 waitForTable :: State -> TableName -> Process State
 waitForTable s table = do
       -- TODO: load the table info into the meta zone
-      logm $ "waitForTable:" ++ (show table)
+      logm $ "HroqMnesia.waitForTable:" ++ (show table)
       let mm = getMetaForTable s table
-      logm $ "waitForTable:me=" ++ (show mm)
-      when (isNothing mm) $ logm $ "waitForTable:mm=Nothing,s=" ++ (show s)
+      logm $ "HroqMnesia.waitForTable:me=" ++ (show mm)
+      when (isNothing mm) $ logm $ "HroqMnesia.waitForTable:mm=Nothing,s=" ++ (show s)
       let (TableMeta _ms storage recordType) = fromMaybe (TableMeta Nothing StorageNone RecordTypeMeta) mm
 
       exists  <- queueExists table
-      logm $ "wait_for_tables:(table,exists,recordType)=" ++ (show (table,exists,recordType))
+      logm $ "HroqMnesia.wait_for_tables:(table,exists,recordType)=" ++ (show (table,exists,recordType))
       res <- case exists of
         True -> do
           newS <- do
             case recordType of
               RecordTypeMeta       -> do
-                logm $ "waitForTable: RecordTypeMeta"
+                logm $ "HroqMnesia.waitForTable: RecordTypeMeta"
                 -- TODO: refactor this and next case into one fn
                 ems <- liftIO $ Exception.try $ decodeFileMeta (tableNameToFileName table)
-                logm $ "wait_for_tables:ems=" ++ (show ems)
+                logm $ "HroqMnesia.wait_for_tables:ems=" ++ (show ems)
                 case ems of
                   Left (e :: IOError) -> return s
                   Right ms -> return $ updateTableInfoMeta s table storage ms
 
               RecordTypeQueueEntry -> do
-                logm $ "waitForTable: RecordTypeQueueEntry"
+                logm $ "HroqMnesia.waitForTable: RecordTypeQueueEntry"
                 ems <- liftIO $ Exception.try $ decodeFileQEntry (tableNameToFileName table)
-                logm $ "wait_for_tables:ems=" ++ (show ems)
+                logm $ "HroqMnesia.wait_for_tables:ems=" ++ (show ems)
                 case ems of
                   Left (e :: IOError) -> return s
                   Right ms -> return $ updateTableInfoQ s table storage ms
               _ -> do
-                logm "do_wait_for_tables:unknown record type"
+                logm "HroqMnesia.do_wait_for_tables:unknown record type"
                 return s
 
           return newS
         False -> do
-          logm $ "wait_for_tables:False, done:" ++ (show table)
+          logm $ "HroqMnesia.wait_for_tables:False, done:" ++ (show table)
           case recordType of
             RecordTypeMeta       -> return $ updateTableInfoMeta s table StorageNone []
             RecordTypeQueueEntry -> return $ updateTableInfoQ    s table StorageNone []
             _                    -> return s
-      logm $ "waitForTable done:res=" ++ (show res)
+      logm $ "HroqMnesia.waitForTable done:res=" ++ (show res)
       return res
       -- return (table, TableMeta Nothing StorageNone RecordTypeMeta)
 
@@ -989,7 +987,7 @@ getLengthOfFile ::
 getLengthOfFile e = do
   case e of
     Left er -> do
-      logm $ "getLengthOfFile:(er)=" ++ (show (er))
+      logm $ "HroqMnesia.getLengthOfFile:(er)=" ++ (show (er))
       return 0
     Right xs -> return $ fromIntegral $ length xs
 
@@ -1011,54 +1009,43 @@ instance Binary TableInfoRsp where
 
 do_table_info :: State -> TableName -> TableInfoReq -> Process (State,TableInfoRsp)
 do_table_info s tableName TableInfoSize        = do
-  -- logm $ "table_info:TableInfoSize" ++ (show (tableName))
+  -- logm $ "HroqMnesia.table_info:TableInfoSize" ++ (show (tableName))
   getBucketSize s tableName
 do_table_info s tableName TableInfoStorageType = do
-  -- logm $ "table_info:TableInfoStorageType" ++ (show (tableName))
+  -- logm $ "HroqMnesia.table_info:TableInfoStorageType" ++ (show (tableName))
   getStorageType s tableName
 do_table_info s tableName infoReq = do
-  -- logm $ "table_info undefined:" ++ (show (tableName,infoReq))
+  -- logm $ "HroqMnesia.table_info undefined:" ++ (show (tableName,infoReq))
   return (s,TIError)
 
 -- ---------------------------------------------------------------------
 
 getBucketSize :: State -> TableName -> Process (State,TableInfoRsp)
 getBucketSize s tableName = do
-  logm $ "getBucketSize " ++ (show tableName)
+  -- logm $ "HroqMnesia.getBucketSize " ++ (show tableName)
   let mm = getMetaForTable s tableName
   s' <- if (isNothing mm) then waitForTable s tableName
                           else return s
   let mm' = getMetaForTable s' tableName
   case mm' of
     Nothing -> do
-      logm $ "  getBucketSize(nonexist) "
+      -- logm $ "  getBucketSize(nonexist) "
       return $ (s',TISize 0)
     Just (TableMeta msize _ _) -> do
-      logm $ "  getBucketSize(exists) " ++ (show (tableName,msize))
+      -- logm $ "  getBucketSize(exists) " ++ (show (tableName,msize))
       case msize of
         Nothing -> do
           s'' <- waitForTable s' tableName
           let mm'' = getMetaForTableDefault s'' tableName
-          logm $ "getBucketSize:mm''=" ++ (show mm'')
+          logm $ "HroqMnesia.getBucketSize:mm''=" ++ (show mm'')
           return (s'', TISize $ fromMaybe 0 (tSize mm''))
         Just size -> return (s',TISize size)
-{-
-  exists <- queueExists tableName
-  logm $ "getBucketSize exists=" ++ (show exists)
-  case exists of
-    True -> do
-      -- logm $ "  getBucketSize(exists) " ++ (show (tableName,res))
-      return $ TISize 0
-    False -> do
-      logm $ "  getBucketSize(nonexist) "
-      return $ TISize 0
--}
 
 getStorageType :: State -> TableName -> Process (State,TableInfoRsp)
 getStorageType s tableName = do
   e  <- queueExists tableName
   let storage = if e then DiscCopies else StorageNone
-  logm $ "getStorageType:" ++ (show (tableName,storage))
+  logm $ "HroqMnesia.getStorageType:" ++ (show (tableName,storage))
   return $ (s,TIStorageType storage)
 
 -- ---------------------------------------------------------------------

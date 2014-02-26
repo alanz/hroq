@@ -375,7 +375,7 @@ handleEnqueue s (Enqueue q v) = do
 
     -- Notify all waiting processes that a new message has arrived
 
-    logm $ "handleEnqueue notifying subsribers:" ++ (show (qsSubscriberPidDict s))
+    -- logm $ "handleEnqueue notifying subsribers:" ++ (show (qsSubscriberPidDict s))
     -- [SPid ! {'$eroq_queue', QueueName, NewServerState#eroq_queue_state.total_queue_size} || {SPid, _} <- dict:to_list(SubsPidDict)],
     -- mapM_ (\(pid,_ref) -> send pid (QueueMessage)) $ Map.toList $ qsSubscriberPidDict s
     mapM_ (\(pid,_ref) -> sendTo pid (QueueMessage)) $ Map.toList $ qsSubscriberPidDict s
@@ -421,7 +421,7 @@ enqueue_one_message queueName v s = do
   -- logm $ "enqueue_one_message:(procBucket,overflowBucket)=" ++ (show (procBucket,overflowBucket))
 
   HM.TISize bucketSize <- HM.table_info overflowBucket HM.TableInfoSize
-  logm $ "enqueue_one_message:bucketSize=" ++ (show bucketSize)
+  -- logm $ "enqueue_one_message:bucketSize=" ++ (show bucketSize)
 
   logt $ "enqueue_one_message 1"
 
@@ -461,7 +461,7 @@ enqueue_one_message queueName v s = do
                             }
                else do
                  -- A new overflow bucket (new tail of queue) was created ....
-                 logm $ "enqueue_one_message:new overflow bucket"
+                 -- logm $ "enqueue_one_message:new overflow bucket"
                  case procBucket == overflowBucket of
                    True -> do
                         -- logm $ "enqueue_one_message:not really??"
@@ -753,6 +753,6 @@ create_table(Type, TableName) ->
 create_table :: HM.TableStorage -> TableName -> Process ()
 create_table storage tableName = do
   HM.create_table storage tableName HM.RecordTypeQueueEntry
-  logm "HroqQueue.create_table:not checking storage type"
+  -- logm "HroqQueue.create_table:not checking storage type"
 
 -- ---------------------------------------------------------------------

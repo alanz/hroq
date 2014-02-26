@@ -84,7 +84,7 @@ queue_watch(QueueWatchConstructs)->
 
 queue_watch :: [(String,String,Metric)] -> Process String
 queue_watch queueWatchConstructs = do
-  logm $ "HroqQueueWatch.queue_watch entered"
+  logt $ "HroqQueueWatch.queue_watch entered"
 
   let handler :: SomeException -> Process [(String,Regex,Metric)]
       handler e = (logm $ "HRoqQueueWatch.handler e =" ++ show (e))

@@ -99,7 +99,8 @@ worker_supervised ekg = do
 
   logm "enqueue done b starting"
   -- mapM_ (\n -> enqueue qNameB (qval $ "bar" ++ (show n))) [1..10]
-  mapM_ (\n -> sleepFor 3 Seconds >> enqueue qNameB (qval $ "bar" ++ (show n))) [1..10]
+  spawnLocal $ (mapM_ (\n -> sleepFor 15 Millis >> enqueue qNameB (qval $ "bar" ++ (show n))) [1..9000])
+  spawnLocal $ (mapM_ (\n -> sleepFor 20 Millis >> enqueue qNameA (qval $ "bar" ++ (show n))) [1..9000])
   logm "enqueue done b 1"
 
 

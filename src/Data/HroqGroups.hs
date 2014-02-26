@@ -228,7 +228,7 @@ handle_call({join, Name, Type, Pid}, _From, #state{mdict = M, gdict = G} = State
 -}
 handleJoinCall :: State -> Join -> Process (ProcessReply () State)
 handleJoinCall st@(ST {stMdict = m, stGdict = g}) (Join nameGroup pid) = do
-    logm $ "handleJoinCall called with:" ++ (show (nameGroup))
+    logm $ "HroqGroups:handleJoinCall called with:" ++ (show (nameGroup))
 
     case Map.lookup nameGroup g of
       Just _ -> reply () st
@@ -252,7 +252,7 @@ handle_call({leave, Name, Type}, _From, #state{mdict = M, gdict = G} = State) ->
 -}
 handleLeaveCall :: State -> Leave -> Process (ProcessReply () State)
 handleLeaveCall st@(ST {stMdict = m, stGdict = g}) (Leave nameGroup) = do
-    logm $ "handleLeaveCall called with:" ++ (show (nameGroup))
+    logm $ "HroqGroups:handleLeaveCall called with:" ++ (show (nameGroup))
 
     case Map.lookup nameGroup g of
       Just (ref,_pid) -> do
@@ -271,7 +271,7 @@ handle_call({members, Type}, _From, #state{gdict = G} = State) ->
 -}
 handleMembersCall :: State -> GetMembers -> Process (ProcessReply GetMembersReply State)
 handleMembersCall st@(ST {stGdict = g}) (GetMembers groupType) = do
-    logm $ "handleMembersCall called with:" ++ (show (groupType))
+    -- logm $ "HroqGroups:handleMembersCall called with:" ++ (show (groupType))
 
     let members = [ ng | (ng,_) <- Map.toList g, nameGroupType ng == groupType]
         toq   xs = map (\(NGQueue       n) -> n) xs

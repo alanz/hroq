@@ -217,7 +217,7 @@ serverDefinition = defaultProcess {
          -- handleInfo handleInfoProcessMonitorNotification
         ]
      -- , timeoutHandler = \_ _ -> do
-     --       {logm "HroqStatsGatherer:timout exit"; stop $ ExitOther "timeout az"}
+     --       {logm "HroqAlarmServer:timout exit"; stop $ ExitOther "timeout az"}
      , timeoutHandler = handleTimeout
      , shutdownHandler = \_ reason -> do
            { logm $ "HroqAlarmServer terminateHandler:" ++ (show reason) }
@@ -236,7 +236,7 @@ handle_call(check, _From, State) ->
 -}
 handleCheckCall :: State -> Check -> Process (ProcessReply Delay State)
 handleCheckCall st Check = do
-    logm $ "handleCheckCall called with:" ++ (show (Check))
+    logm $ "HroqAlarmServer:handleCheckCall called with:" ++ (show (Check))
 
     (st',res) <- do_safe_alarm_processing st True
 
@@ -250,7 +250,7 @@ handle_call(triggers, _From, #eroq_alarm_server_state{triggers = Triggers} = Sta
 -}
 handleTriggersCall :: State -> Triggers -> Process (ProcessReply [AlarmTrigger] State)
 handleTriggersCall st@(ST {stTriggers = trigs}) _ts = do
-    logm $ "handleTriggerCall called with:" ++ (show (Check))
+    logm $ "HroqAlarmServer:handleTriggerCall called with:" ++ (show (Check))
     reply trigs st
 
 -- ---------------------------------------------------------------------
@@ -311,7 +311,7 @@ do_safe_alarm_processing(State, Force) ->
 
 do_safe_alarm_processing :: State -> Bool -> Process (State, Delay)
 do_safe_alarm_processing st force = do
-  logm $ "do_safe_alarm_processing:force=" ++ show force
+  -- logm $ "HroqAlarmServer:do_safe_alarm_processing:force=" ++ show force
   now <- liftIO $ getCurrentTime
   let ageMs = diffUTCTime now (stLastCheck st)
   if force == True || ageMs > delayToDiffTime mONITOR_INTERVAL_MS
@@ -352,15 +352,15 @@ do_alarm_processing(State)->
 
 do_alarm_processing :: State -> Process (Either String State)
 do_alarm_processing st = do
-  logm $ "HroqAlarmServer:do_alarm_processing entered"
+  -- logm $ "HroqAlarmServer:do_alarm_processing entered"
 
   qs <- queues
   queueStats <- traverse_get_queue_stats qs []
-  logm $ "HroqAlarmServer:do_alarm_processing got stats:" ++ show queueStats
+  -- logm $ "HroqAlarmServer:do_alarm_processing got stats:" ++ show queueStats
 
   -- TODO: use something like dyre to look this up
   mAcfg <- liftIO $ lookupEnv "alarm_config"
-  logm $ "HroqAlarmServer:do_alarm_processing got mAcfg:" ++ show mAcfg
+  -- logm $ "HroqAlarmServer:do_alarm_processing got mAcfg:" ++ show mAcfg
   let alarmConfig = case mAcfg of
         Just cfg -> -- cfg
                    eXAMPLE_QUEUE_ALARM_CONFIG
@@ -372,7 +372,7 @@ do_alarm_processing st = do
   (newStatsDict,alarmList,alarmTriggers)
      <- traverse_process_all_queues statsDict (A Map.empty) [] queueStats alarmConfig
 
-  logm $ "HroqAlarmServer:do_alarm_processing processed queues"
+  -- logm $ "HroqAlarmServer:do_alarm_processing processed queues"
 
   let newState = st {stStatsHistory = newStatsDict, stTriggers = alarmTriggers }
 
@@ -381,9 +381,10 @@ do_alarm_processing st = do
         logm $ "HroqAlarmServer:fun handler got error:" ++ show e
         return ()
 
+  logm $ "HroqAlarmServer:calling handler for:" ++ show alarmList
+
   catch (fun alarmList) handler
 
-  logm $ "HroqAlarmServer:do_alarm_processing done"
 
   return $ Right newState
 
@@ -595,7 +596,7 @@ determine_alarms
   -> [AlarmTrigger]
   -> Process (StatsDict, Alarms, [AlarmTrigger])
 determine_alarms queueType stringQueueName queueSize dequeueCount (h:t) statsDict alarmList alarmTriggers = do
-  logm $ "HroqAlarmServer:determine_alarms entered for:" ++ show h
+  -- logm $ "HroqAlarmServer:determine_alarms entered for:" ++ show h
   let (QAC alarmName queueTypeList exclusionRegex alarmParams) = h
 
   --  QueueTypeMatch = lists:member(QueueType, QueueTypeList),
@@ -611,7 +612,7 @@ determine_alarms queueType stringQueueName queueSize dequeueCount (h:t) statsDic
 
         excluded <- catch (is_excluded stringQueueName exclusionRegex) handler
 
-        logm $ "HroqAlarmServer:determine_alarms excluded:" ++ show excluded
+        -- logm $ "HroqAlarmServer:determine_alarms excluded:" ++ show excluded
         if excluded == False
           then do
 
@@ -646,7 +647,7 @@ determine_alarms queueType stringQueueName queueSize dequeueCount (h:t) statsDic
           else return (statsDict,alarmList, alarmTriggers)
       else return (statsDict, alarmList,alarmTriggers)
 
-  logm $ "HroqAlarmServer:determine_alarms about to recurse"
+  -- logm $ "HroqAlarmServer:determine_alarms about to recurse"
   determine_alarms queueType stringQueueName queueSize dequeueCount t newStatsDict newAlarmList newAlarmTriggers
 
 determine_alarms _  _  _  _  [] newStatsDict newAlarmList newAlarmTriggers

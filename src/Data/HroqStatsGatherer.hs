@@ -247,7 +247,7 @@ handleGetQueueStatsCall ::
       State -> GetQueueStats
    -> Process (ProcessReply GetQueueStatsReply State)
 handleGetQueueStatsCall st@(ST {stQdict = qd}) (GetQueueStats qname) = do
-    logm $ "handleGetQueueStatsCall called with:" ++ (show (qname))
+    -- logm $ "HroqStatsGatherer.handleGetQueueStatsCall called with:" ++ (show (qname))
 
     let res = case Map.lookup qname qd of
           Just stats -> ReplyQStats stats
@@ -276,7 +276,7 @@ handleGetConsumerStatsCall ::
        State -> GetConsumerStats
     -> Process (ProcessReply GetConsumerStatsReply State)
 handleGetConsumerStatsCall st@(ST {stCdict = cd}) (GetConsumerStats cname) = do
-    logm $ "handleGetConsumerStatsCall called with:" ++ (show (cname))
+    -- logm $ "HroqStatsGatherer.handleGetConsumerStatsCall called with:" ++ (show (cname))
 
     let res = case Map.lookup cname cd of
           Just stats -> ReplyCStats stats
@@ -317,8 +317,8 @@ handle_cast({publish_queue_stats, QueueName, Pid, Stats}, #state{qdict = Qd, pdi
 
 handlePublishQueueStatsCast :: State -> PublishQueueStats -> Process (ProcessAction State)
 handlePublishQueueStatsCast st@(ST { stQdict = qd, stPdict = pd }) (PublishQueueStats q s pid) = do
-    logm $ "handlePublishQueueStatsCast called:"
-          ++ (show (q,qstatsAppInfo s,qstatsNewTotalQueued s,qstatsEnqueueCount s,qstatsNewDequeueCount s))
+    -- logm $ "HroqStatsGatherer.handlePublishQueueStatsCast called:"
+    --       ++ (show (q,qstatsAppInfo s,qstatsNewTotalQueued s,qstatsEnqueueCount s,qstatsNewDequeueCount s))
 
     let qd' = Map.insert q s qd
 
@@ -356,7 +356,7 @@ handle_cast({publish_consumer_stats, ConsName, Pid, Stats}, #state{cdict = Cd, p
 
 handlePublishConsumerStatsCast :: State -> PublishConsumerStats -> Process (ProcessAction State)
 handlePublishConsumerStatsCast st@(ST {stCdict = cd, stPdict = pd}) (PublishConsumerStats c s pid) = do
-    logm $ "handlePublishConsumerStatsCast called with:" ++ (show (c,s))
+    -- logm $ "HroqStatsGatherer.handlePublishConsumerStatsCast called with:" ++ (show (c,s))
     let cd' = Map.insert c s cd
 
     pd' <- case Map.lookup pid pd of
@@ -399,7 +399,7 @@ handle_info({'DOWN', _Ref, process, Pid, _Info}, #state{qdict = Qd, cdict = Cd, 
 -- term memory leak
 handleInfoProcessMonitorNotification :: State -> ProcessMonitorNotification -> Process (ProcessAction State)
 handleInfoProcessMonitorNotification st n@(ProcessMonitorNotification _ref pid _reason) = do
-  logm $ "handleInfoProcessMonitorNotification called with: " ++ show n
+  -- logm $ "HroqStatsGatherer.handleInfoProcessMonitorNotification called with: " ++ show n
   let qd = stQdict st
       cd = stCdict st
       pd = stPdict st

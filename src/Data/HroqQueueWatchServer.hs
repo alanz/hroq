@@ -142,7 +142,6 @@ start_queue_watch_server :: Closure (String -> Process ()) -> Process ()
 start_queue_watch_server callbackFun = do
   logm $ "HroqQueueWatchServer:start_queue_watch_server entered"
   fun <- unClosure callbackFun
-  -- let fun = noopFun
   logm $ "HroqQueueWatchServer:start_queue_watch_server after unClosure"
 
   self <- getSelfPid
@@ -211,7 +210,7 @@ handle_info(timeout, {CallbackFun}) ->
 
 handleTimeout :: TimeoutHandler State
 handleTimeout st@(ST callbackFun) currDelay = do
-  logm $ "HroqQueueWatchServer:handleTimeout entered"
+  logt $ "HroqQueueWatchServer:handleTimeout entered"
 
   -- TODO: use something like dyre to look this up
   mQwConfig <- liftIO $ lookupEnv "queue_watch_config"
@@ -231,7 +230,7 @@ handleTimeout st@(ST callbackFun) currDelay = do
 
   catch (worker) handler
 
-  logm $ "HroqQueueWatchServer:handleTimeout complete"
+  logt $ "HroqQueueWatchServer:handleTimeout complete"
 
   timeoutAfter currDelay st
 

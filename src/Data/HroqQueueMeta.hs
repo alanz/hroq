@@ -49,7 +49,7 @@ add_bucket(QName, BucketId) ->
 -}
 meta_add_bucket :: QName -> TableName -> Process [TableName]
 meta_add_bucket queueName bucket = do
-  logm $ "meta_add_bucket:" ++ (show (queueName,bucket))
+  -- logm $ "HroqQueueMeta:meta_add_bucket:" ++ (show (queueName,bucket))
   rv <- retry_dirty_read retryCnt hroq_queue_meta_table queueName
   case rv of
     Nothing -> do
@@ -80,9 +80,9 @@ all_buckets(QName) ->
 -}
 meta_all_buckets :: QName -> Process [TableName]
 meta_all_buckets queueName = do
-  logm $ "meta_all_buckets :" ++ (show queueName)
+  -- logm $ "HroqQueueMeta:meta_all_buckets :" ++ (show queueName)
   v <- dirty_read hroq_queue_meta_table queueName
-  logm $ "meta_all_buckets v:" ++ (show v)
+  -- logm $ "HroqQueueMeta:meta_all_buckets v:" ++ (show v)
   case v of
     Nothing -> return []
     Just (MAllBuckets _ b _) -> return b
@@ -91,7 +91,7 @@ meta_all_buckets queueName = do
 
 meta_del_bucket :: MetaKey -> TableName -> Process [TableName]
 meta_del_bucket queueName bucket = do
-  logm "meta_del_bucket undefined"
+  logm "HroqQueueMeta:meta_del_bucket undefined"
   r <- dirty_read hroq_queue_meta_table queueName
   case r of
     Just (MAllBuckets _ b _) -> do
@@ -101,7 +101,7 @@ meta_del_bucket queueName bucket = do
       return newBuckets
     Nothing -> do
 
-      logm $ "meta_del_bucket (queueName,bucket) failed for " ++ (show (queueName,bucket))
+      logm $ "HroqQueueMeta:meta_del_bucket (queueName,bucket) failed for " ++ (show (queueName,bucket))
       return []
 
 {-
