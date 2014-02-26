@@ -85,7 +85,13 @@ queue_watch(QueueWatchConstructs)->
 queue_watch :: [(String,String,Metric)] -> Process String
 queue_watch queueWatchConstructs = do
   logm $ "HroqQueueWatch.queue_watch entered"
-  let preprocessedCons = preprocess_constructs queueWatchConstructs []
+
+  let handler :: SomeException -> Process [(String,Regex,Metric)]
+      handler e = (logm $ "HRoqQueueWatch.handler e =" ++ show (e))
+                >> return []
+
+  preprocessedCons <- catch (preprocess_constructs queueWatchConstructs []) handler
+
   qs <- queues
   ts <- make_timestamp
   finalDict <- do_queue_watch_queues qs Map.empty preprocessedCons
@@ -130,16 +136,21 @@ preprocess_constructs([{Label, AppInfoRegExp, Metric} | T], PreProcessedConstruc
     end.
 -}
 
-preprocess_constructs ::
-  [(String, String, Metric)] -> [(String, Regex, Metric)] -> [(String, Regex, Metric)]
-preprocess_constructs [] preProcessedConstructs = preProcessedConstructs
-preprocess_constructs ((label,appInfoRegExp,metric):t) preProcessedConstructs
-  =  preprocess_constructs t preProcessedConstructs ++ [(label,compiledRegex,metric)]
-  where
-    mkr :: String -> Regex
-    mkr reg = makeRegex reg
+preprocess_constructs
+   :: [(String, String, Metric)] -> [(String, Regex, Metric)]
+   -> Process [(String, Regex, Metric)]
+preprocess_constructs [] preProcessedConstructs = return preProcessedConstructs
 
-    compiledRegex = mkr appInfoRegExp
+preprocess_constructs ((label,appInfoRegExp,metric):t) preProcessedConstructs = do
+  let
+    mkr :: String -> Process Regex
+    mkr reg = makeRegexM reg
+
+  compiledRegex <- mkr appInfoRegExp
+
+  preprocess_constructs t (preProcessedConstructs ++ [(label,compiledRegex,metric)])
+
+
 
 
 -- ---------------------------------------------------------------------

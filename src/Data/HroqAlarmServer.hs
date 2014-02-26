@@ -112,8 +112,8 @@ mONITOR_INTERVAL_MS = Delay $ milliSeconds 30000
 -- TODO: look at getting this via dyre http://hackage.haskell.org/package/dyre-0.8.2/docs/Config-Dyre.html
 eXAMPLE_QUEUE_ALARM_CONFIG =
   [
-    QAC "MAIN_QUEUE_STATIC" (Set.fromList ["MAIN"]) (Include "") [(P Static  60)]
-  , QAC "MAIN_QUEUE_STATIC" (Set.fromList ["DLQ"])  (Include "") [(P MaxSize 0)]
+    QAC "MAIN_QUEUE_STATIC" (Set.fromList ["MAIN"]) (Include ".*") [(P Static  60)]
+  , QAC "MAIN_QUEUE_STATIC" (Set.fromList ["DLQ"])  (Include ".*") [(P MaxSize 0)]
   ]
 
 data QueueAlarmConfig = QAC { acName :: String
@@ -121,11 +121,14 @@ data QueueAlarmConfig = QAC { acName :: String
                             , acExclusion :: Constraint
                             , acParams :: [Param]
                             }
+                      deriving (Show)
 
 data Constraint = Include String
                 | Exclude String
+               deriving (Show)
 
 data Param = P ParamType Integer
+               deriving (Show)
 
 data ParamType = Static | MaxSize
                deriving (Eq,Show)
@@ -349,12 +352,15 @@ do_alarm_processing(State)->
 
 do_alarm_processing :: State -> Process (Either String State)
 do_alarm_processing st = do
-  logm $ "do_alarm_processing entered"
+  logm $ "HroqAlarmServer:do_alarm_processing entered"
 
   qs <- queues
   queueStats <- traverse_get_queue_stats qs []
+  logm $ "HroqAlarmServer:do_alarm_processing got stats:" ++ show queueStats
+
   -- TODO: use something like dyre to look this up
   mAcfg <- liftIO $ lookupEnv "alarm_config"
+  logm $ "HroqAlarmServer:do_alarm_processing got mAcfg:" ++ show mAcfg
   let alarmConfig = case mAcfg of
         Just cfg -> -- cfg
                    eXAMPLE_QUEUE_ALARM_CONFIG
@@ -366,6 +372,8 @@ do_alarm_processing st = do
   (newStatsDict,alarmList,alarmTriggers)
      <- traverse_process_all_queues statsDict (A Map.empty) [] queueStats alarmConfig
 
+  logm $ "HroqAlarmServer:do_alarm_processing processed queues"
+
   let newState = st {stStatsHistory = newStatsDict, stTriggers = alarmTriggers }
 
   let handler :: SomeException -> Process ()
@@ -374,6 +382,8 @@ do_alarm_processing st = do
         return ()
 
   catch (fun alarmList) handler
+
+  logm $ "HroqAlarmServer:do_alarm_processing done"
 
   return $ Right newState
 
@@ -464,14 +474,16 @@ is_excluded(StringQueueName, {exclude, Regex})->
 -}
 
 -- TODO: compile the regex on startup
-is_excluded :: QName -> Constraint -> Bool
-is_excluded (QN stringQueueName) (Include regex) =
-  not $ matchTest (mkr regex) stringQueueName
-is_excluded (QN stringQueueName) (Exclude regex) =
-        matchTest (mkr regex) stringQueueName
+is_excluded :: QName -> Constraint -> Process Bool
+is_excluded (QN stringQueueName) (Include regex) = do
+  reg <- mkr regex
+  return $ not $ matchTest reg stringQueueName
+is_excluded (QN stringQueueName) (Exclude regex) = do
+  reg <- mkr regex
+  return $      matchTest reg stringQueueName
 
-mkr :: String -> Regex
-mkr reg = makeRegex reg
+mkr :: String -> Process Regex
+mkr reg = makeRegexM reg
 
 -- ---------------------------------------------------------------------
 {-
@@ -583,6 +595,7 @@ determine_alarms
   -> [AlarmTrigger]
   -> Process (StatsDict, Alarms, [AlarmTrigger])
 determine_alarms queueType stringQueueName queueSize dequeueCount (h:t) statsDict alarmList alarmTriggers = do
+  logm $ "HroqAlarmServer:determine_alarms entered for:" ++ show h
   let (QAC alarmName queueTypeList exclusionRegex alarmParams) = h
 
   --  QueueTypeMatch = lists:member(QueueType, QueueTypeList),
@@ -592,7 +605,13 @@ determine_alarms queueType stringQueueName queueSize dequeueCount (h:t) statsDic
   (newStatsDict,newAlarmList,newAlarmTriggers) <-
     if queueTypeMatch
       then do
-        let excluded = is_excluded stringQueueName exclusionRegex
+        let handler :: SomeException -> Process Bool
+            handler e = (logm $ "HRoqAlarmServer.handler (exclusionRegex,e)=" ++ show (exclusionRegex,e))
+                      >> return False
+
+        excluded <- catch (is_excluded stringQueueName exclusionRegex) handler
+
+        logm $ "HroqAlarmServer:determine_alarms excluded:" ++ show excluded
         if excluded == False
           then do
 
@@ -627,6 +646,7 @@ determine_alarms queueType stringQueueName queueSize dequeueCount (h:t) statsDic
           else return (statsDict,alarmList, alarmTriggers)
       else return (statsDict, alarmList,alarmTriggers)
 
+  logm $ "HroqAlarmServer:determine_alarms about to recurse"
   determine_alarms queueType stringQueueName queueSize dequeueCount t newStatsDict newAlarmList newAlarmTriggers
 
 determine_alarms _  _  _  _  [] newStatsDict newAlarmList newAlarmTriggers

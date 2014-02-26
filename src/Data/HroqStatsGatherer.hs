@@ -317,7 +317,8 @@ handle_cast({publish_queue_stats, QueueName, Pid, Stats}, #state{qdict = Qd, pdi
 
 handlePublishQueueStatsCast :: State -> PublishQueueStats -> Process (ProcessAction State)
 handlePublishQueueStatsCast st@(ST { stQdict = qd, stPdict = pd }) (PublishQueueStats q s pid) = do
-    logm $ "handlePublishQueueStatsCast called with:" ++ (show (q,s))
+    logm $ "handlePublishQueueStatsCast called:"
+          ++ (show (q,qstatsAppInfo s,qstatsNewTotalQueued s,qstatsEnqueueCount s,qstatsNewDequeueCount s))
 
     let qd' = Map.insert q s qd
 

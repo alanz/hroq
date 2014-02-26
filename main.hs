@@ -1,21 +1,14 @@
 {-# LANGUAGE TemplateHaskell #-}
-{- # LANGUAGE DeriveDataTypeable  # -}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 
 import Control.Concurrent
 import Control.Distributed.Process hiding (call)
-import Control.Distributed.Process.Closure
 import Control.Distributed.Process.Node
 import Control.Distributed.Process.Platform
-import Control.Distributed.Process.Platform.ManagedProcess hiding (runProcess)
 import Control.Distributed.Process.Platform.Time
 import Control.Distributed.Process.Platform.Timer
-import Control.Distributed.Static (staticLabel, staticClosure)
-import Control.Monad
-import Data.Binary
-import Data.DeriveTH
 import Data.Hroq
 import Data.HroqAlarmServer
 import Data.HroqConsumer
@@ -25,14 +18,9 @@ import Data.HroqGroups
 import Data.HroqLogger
 import Data.HroqMnesia
 import Data.HroqQueue
-import Data.HroqQueueMeta
 import Data.HroqQueueWatchServer
 import Data.HroqSampleWorker
 import Data.HroqStatsGatherer
-import Data.HroqSup
-import Data.Maybe
-import Data.RefSerialize
-import Data.Typeable (Typeable)
 import Network.Transport.TCP (createTransportExposeInternals, defaultTCPParameters)
 import qualified Data.HroqApp as App
 import qualified Data.HroqGroups as G
@@ -67,7 +55,6 @@ worker_supervised ekg = do
 
   logm "worker_supervised starting"
   pid <- App.start_app
-  -- pid <- hroq_start_link undefined undefined
   logm $ "worker_supervised started:pid=" ++ show pid
   sleepFor 2 Seconds
 
@@ -111,7 +98,8 @@ worker_supervised ekg = do
 
 
   logm "enqueue done b starting"
-  mapM_ (\n -> enqueue qNameB (qval $ "bar" ++ (show n))) [1..10]
+  -- mapM_ (\n -> enqueue qNameB (qval $ "bar" ++ (show n))) [1..10]
+  mapM_ (\n -> sleepFor 3 Seconds >> enqueue qNameB (qval $ "bar" ++ (show n))) [1..10]
   logm "enqueue done b 1"
 
 
