@@ -1,4 +1,5 @@
-{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE DeriveDataTypeable  #-}
+{-# LANGUAGE DeriveGeneric       #-}
 {-# Language ScopedTypeVariables #-}
 module Data.HroqMnesia
   (
@@ -69,6 +70,7 @@ import Prelude hiding (catch)
 import System.Directory
 import System.IO
 import System.IO.Error hiding (catch)
+import GHC.Generics
 import System.IO.Unsafe
 import qualified Data.ByteString.Lazy as L
 import qualified Data.ByteString.Lazy.Char8 as B
@@ -97,43 +99,43 @@ directoryPrefix = ".hroqdata/"
 
 --  , change_table_copy_type
 data ChangeTableCopyType = ChangeTableCopyType !TableName !TableStorage
-                           deriving (Typeable, Show)
+                           deriving (Typeable, Show,Generic)
 
 --  , create_table
 data CreateTable = CreateTable !TableStorage !TableName !RecordType
-                   deriving (Typeable, Show)
+                   deriving (Typeable, Show,Generic)
 
 --  , delete_table
 data DeleteTable = DeleteTable !TableName
-                   deriving (Typeable, Show)
+                   deriving (Typeable, Show,Generic)
 
 --  , create_schema
 data CreateSchema = CreateSchema
-                   deriving (Typeable, Show)
+                   deriving (Typeable, Show,Generic)
 
 --  , delete_schema
 data DeleteSchema = DeleteSchema
-                   deriving (Typeable, Show)
+                   deriving (Typeable, Show,Generic)
 
 --  , dirty_all_keys
 data DirtyAllKeys = DirtyAllKeys !TableName
-                    deriving (Typeable, Show)
+                    deriving (Typeable, Show,Generic)
 
 --  , dirty_read
 data DirtyRead = DirtyRead !TableName !MetaKey
-                   deriving (Typeable, Show)
+                   deriving (Typeable, Show,Generic)
 
 --  , dirty_read
 data DirtyReadQ = DirtyReadQ !TableName !QKey
-                   deriving (Typeable, Show)
+                   deriving (Typeable, Show,Generic)
 
 --  , dirty_read
 data DirtyReadLS = DirtyReadLS !TableName !ConsumerName
-                   deriving (Typeable, Show)
+                   deriving (Typeable, Show,Generic)
 
 --  , dirty_delete_q
 data DirtyDeleteQ = DirtyDeleteQ !TableName !QKey
-                   deriving (Typeable, Show)
+                   deriving (Typeable, Show,Generic)
 
 {-
 --  , dirty_delete_ls
@@ -143,11 +145,11 @@ data DirtyDeleteLS = DirtyDeleteLS !TableName !ConsumerName
 
 --  , dirty_write
 data DirtyWrite = DirtyWrite !TableName !Meta
-                   deriving (Typeable, Show)
+                   deriving (Typeable, Show,Generic)
 
 --  , dirty_write_q
 data DirtyWriteQ = DirtyWriteQ !TableName !QEntry
-                   deriving (Typeable, Show)
+                   deriving (Typeable, Show,Generic)
 
 {-
 --  , dirty_write_ls
@@ -156,121 +158,43 @@ data DirtyWriteLS = DirtyWriteLS !TableName !ConsumerMessage
 -}
 --  , table_info
 data TableInfo = TableInfo !TableName !TableInfoReq
-                   deriving (Typeable, Show)
+                   deriving (Typeable, Show,Generic)
 
 --  , wait_for_tables
 data WaitForTables = WaitForTables ![TableName] !Delay
-                   deriving (Typeable, Show)
+                   deriving (Typeable, Show,Generic)
 
 -- , log_state
 data LogState = LogState
-                deriving (Typeable,Show)
+                deriving (Typeable,Show,Generic)
 
 -- ---------------------------------------------------------------------
 -- Binary instances
 
 instance Binary ChangeTableCopyType where
-  put (ChangeTableCopyType tn ts) = put tn >> put ts
-  get = do
-    tn <- get
-    ts <- get
-    return (ChangeTableCopyType tn ts)
-
 instance Binary CreateTable where
-  put (CreateTable ts tn rt) = put ts >> put tn >> put rt
-  get = liftM3 CreateTable get get get
-
 instance Binary DeleteTable where
-  put (DeleteTable tn) = put tn
-  get = liftM DeleteTable get
-
 instance Binary CreateSchema where
-  put CreateSchema = putWord8 1
-  get = do
-          v <- getWord8
-          case v of
-            1 -> return CreateSchema
-
 instance Binary DeleteSchema where
-  put DeleteSchema = putWord8 1
-  get = do
-          v <- getWord8
-          case v of
-            1 -> return DeleteSchema
-
 instance Binary DirtyAllKeys where
-  put (DirtyAllKeys tn) = put tn
-  get = liftM DirtyAllKeys get
-
 instance Binary DirtyRead where
-  put (DirtyRead tn key) = put tn >> put key
-  get = liftM2 DirtyRead get get
-
 instance Binary DirtyReadQ where
-  put (DirtyReadQ tn key) = put tn >> put key
-  get = liftM2 DirtyReadQ get get
-
 instance Binary DirtyReadLS where
-  put (DirtyReadLS tn key) = put tn >> put key
-  get = liftM2 DirtyReadLS get get
-
 instance Binary DirtyDeleteQ where
-  put (DirtyDeleteQ tn key) = put tn >> put key
-  get = liftM2 DirtyDeleteQ get get
-
-{-
-instance Binary DirtyDeleteLS where
-  put (DirtyDeleteLS tn key) = put tn >> put key
-  get = liftM2 DirtyDeleteLS get get
--}
-
 instance Binary DirtyWrite where
-  put (DirtyWrite tn key) = put tn >> put key
-  get = liftM2 DirtyWrite get get
-
 instance Binary DirtyWriteQ where
-  put (DirtyWriteQ tn key) = put tn >> put key
-  get = liftM2 DirtyWriteQ get get
-
-{-
-instance Binary DirtyWriteLS where
-  put (DirtyWriteLS tn msg) = put tn >> put msg
-  get = liftM2 DirtyWriteLS get get 
--}
-
 instance Binary TableInfo where
-  put (TableInfo tn req) = put tn >> put req
-  get = liftM2 TableInfo get get
-
 instance Binary WaitForTables where
-  put (WaitForTables tables delay) = put tables >> put delay
-  get = liftM2 WaitForTables get get
-
 instance Binary LogState where
-  put LogState = putWord8 1
-  get = do
-          v <- getWord8
-          case v of
-            1 -> return LogState
 
 -- ---------------------------------------------------------------------
 
 data HroqMnesiaResult = HMResOk
                       | HMResTimeout ![TableName]
                       | HMResError !String
-                      deriving (Typeable,Show)
+                      deriving (Typeable,Show,Generic)
 
 instance Binary HroqMnesiaResult where
-  put HMResOk           = putWord8 1
-  put (HMResTimeout ts) = putWord8 2 >> put ts
-  put (HMResError s)    = putWord8 3 >> put s
-
-  get = do
-          v <- getWord8
-          case v of
-            1 -> return HMResOk
-            2 -> liftM  HMResTimeout get
-            3 -> liftM  HMResError get
 
 -- ---------------------------------------------------------------------
 -- State related functions
@@ -279,21 +203,19 @@ data TableMeta = TableMeta
   { tSize       :: !(Maybe Integer) -- ^Size of stored table, if known
   , tStorage    :: !TableStorage
   , tRecordType :: !RecordType
-  } deriving (Show,Typeable)
+  } deriving (Show,Typeable,Generic)
 
 data State = MnesiaState
   { sTableInfo :: !(Map.Map TableName TableMeta)
   , sRamQ      :: !(Map.Map TableName [QEntry])
   , sRamMeta   :: !(Map.Map TableName [Meta])
   , sEkg       :: !EKG.Server
-  } deriving (Show,Typeable)
+  } deriving (Show,Typeable,Generic)
 
 instance Show EKG.Server where
   show _ = "EKG.Server"
 
 instance Binary TableMeta where
-  put (TableMeta size storage typ) = put size >> put storage >> put typ
-  get = liftM3 TableMeta get get get
 
 {-
 instance Binary State where
@@ -549,41 +471,18 @@ data TableStorage = DiscOnlyCopies
                   | DiscCopies
                   | RamCopies
                   | StorageNone
-                  deriving (Show,Ord,Eq)
+                  deriving (Show,Ord,Eq,Generic)
 
 instance Binary TableStorage where
-  put DiscOnlyCopies = put 'O'
-  put DiscCopies     = put 'D'
-  put RamCopies      = put 'R'
-  put StorageNone    = put 'N'
-
-  get = do
-    v <- get
-    case v of
-      'O' -> return DiscOnlyCopies
-      'D' -> return DiscCopies
-      'R' -> return RamCopies
-      'N' -> return StorageNone
 
 -- ---------------------------------------------------------------------
 
 data RecordType = RecordTypeMeta
                 | RecordTypeQueueEntry
                 | RecordTypeConsumerLocal
-                deriving (Show)
+                deriving (Show,Generic)
 
 instance Binary RecordType where
-  put RecordTypeMeta          = put (1::Word8)
-  put RecordTypeQueueEntry    = put (2::Word8)
-  put RecordTypeConsumerLocal = put (3::Word8)
-
-  get = do
-    v <- getWord8
-    case v of
-      1 -> return RecordTypeMeta
-      2 -> return RecordTypeQueueEntry
-      3 -> return RecordTypeConsumerLocal
-
 
 --------------------------------------------------------------------------------
 -- Implementation                                                             --
@@ -1104,34 +1003,15 @@ getLengthOfFile e = do
 
 data TableInfoReq = TableInfoSize
                   | TableInfoStorageType
-                    deriving (Show)
-
+                    deriving (Show,Generic)
 instance Binary TableInfoReq where
-  put TableInfoSize = put (1::Word8)
-  put TableInfoStorageType = put (2::Word8)
-
-  get = do
-    v <- get
-    case v of
-      (1::Word8) -> return TableInfoSize
-      (2::Word8) -> return TableInfoStorageType
 
 data TableInfoRsp = TISize !Integer
                   | TIStorageType !TableStorage
                   | TIError
-                    deriving (Show,Typeable)
+                    deriving (Show,Typeable,Generic)
 
 instance Binary TableInfoRsp where
-  put (TISize v)         = put (1::Word8) >> put v
-  put (TIStorageType ts) = put (2::Word8) >> put ts
-  put TIError            = put (3::Word8)
-
-  get = do
-    t <- get
-    case t of
-      (1::Word8) -> do {v  <- get; return (TISize v)}
-      (2::Word8) -> do {ts <- get; return (TIStorageType ts)}
-      (3::Word8) -> return TIError
 
 -- ---------------------------------------------------------------------
 

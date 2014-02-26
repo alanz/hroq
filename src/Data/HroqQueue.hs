@@ -1,7 +1,8 @@
 {-# LANGUAGE DeriveDataTypeable   #-}
+{-# LANGUAGE DeriveGeneric        #-}
+{-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE TemplateHaskell      #-}
 {-# LANGUAGE TypeSynonymInstances #-}
-{-# LANGUAGE FlexibleInstances    #-}
 module Data.HroqQueue
   (
     enqueue
@@ -42,6 +43,7 @@ import Data.Typeable (Typeable)
 import qualified Data.HroqMnesia as HM
 import qualified Data.Map as Map
 import qualified Data.Set as Set
+import GHC.Generics
 
 import qualified System.Remote.Monitoring as EKG
 
@@ -112,46 +114,21 @@ instance Show QWorker where
 -- operations to be exposed
 
 data Enqueue = Enqueue !QName !QValue
-               deriving (Typeable, Show)
+               deriving (Typeable, Show,Generic)
 
 data ReadOp = ReadOpDequeue !QName !(Closure (QWorker))  (Maybe ProcessId)
             | ReadOpPeek    !QName
-               deriving (Typeable, Show)
+               deriving (Typeable, Show,Generic)
 
 data ReadOpReply = ReadOpReplyError !String
                  | ReadOpReplyEmpty
                  | ReadOpReplyOk
                  | ReadOpReplyMsg !QEntry
-                 deriving (Typeable,Show)
+                 deriving (Typeable,Show,Generic)
 
 instance Binary ReadOpReply where
-  put (ReadOpReplyError e) = put 'R' >> put e
-  put (ReadOpReplyEmpty)   = put 'E'
-  put (ReadOpReplyOk)      = put 'K'
-  put (ReadOpReplyMsg v)   = put 'M' >> put v
-
-  get = do
-    sel <- get
-    case sel of
-      'R' -> liftM ReadOpReplyError get
-      'E' -> return ReadOpReplyEmpty
-      'K' -> return ReadOpReplyOk
-      'M' -> liftM ReadOpReplyMsg get
-
-
 instance Binary Enqueue where
-  put (Enqueue n v) = put n >> put v
-  get = liftM2 Enqueue get get
-
-
 instance Binary ReadOp where
-  put (ReadOpDequeue n w mpid) = put 'D' >> put n >> put w >> put mpid
-  put (ReadOpPeek n)           = put 'P' >> put n
-  get = do
-    sel <- get
-    case sel of
-      'D' -> liftM3 ReadOpDequeue get get get
-      'P' -> liftM  ReadOpPeek get
 
 type WorkerFunc = QEntry -> Process (Either String ())
 

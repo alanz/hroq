@@ -1,7 +1,8 @@
-{-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE DeriveDataTypeable   #-}
+{-# LANGUAGE DeriveGeneric        #-}
+{-# LANGUAGE FlexibleInstances    #-}
+{-# LANGUAGE ScopedTypeVariables  #-}
 {-# LANGUAGE TypeSynonymInstances #-}
-{-# LANGUAGE FlexibleInstances #-}
 module Data.HroqConsumer
   (
     pause
@@ -43,6 +44,7 @@ import System.Environment (getArgs)
 import qualified Data.ByteString.Lazy.Char8 as C8
 import qualified Data.HroqMnesia as HM
 import qualified Data.Map as Map
+import GHC.Generics
 
 import qualified System.Remote.Monitoring as EKG
 
@@ -196,24 +198,16 @@ liftM13 f m1 m2 m3 m4 m5 m6 m7 m8 m9 m10 m11 m12 m13 = do
 
 -- ---------------------------------------------------------------------
 
-data ConsumerPause  = ConsumerPause  deriving (Typeable)
-data ConsumerResume = ConsumerResume deriving (Typeable)
+data ConsumerPause  = ConsumerPause  deriving (Typeable,Generic)
+data ConsumerResume = ConsumerResume deriving (Typeable,Generic)
 
 instance Binary ConsumerPause where
-  put _ = put 'P'
-  get   = do (_c::Char) <- get
-             return ConsumerPause
 
 instance Binary ConsumerResume where
-  put _ = put 'R'
-  get   = do (_c::Char) <- get
-             return ConsumerResume
 
 data ConsumerUpdateCounters = ConsumerUpdateCounters !Integer !Integer !Integer
-                              deriving (Typeable,Show)
+                              deriving (Typeable,Show,Generic)
 instance Binary ConsumerUpdateCounters where
-  put (ConsumerUpdateCounters c1 c2 c3) = put c1 >> put c2 >> put c3
-  get = liftM3 ConsumerUpdateCounters get get get
 
 -- ---------------------------------------------------------------------
 
@@ -231,46 +225,20 @@ data ConsumerReply = ConsumerReplyOk
                    | ConsumerReplyRetry !NominalDiffTime
                    | ConsumerReplyRetryNewParams !AppParams !NominalDiffTime
                    | ConsumerReplyEmpty -- ^For process_local_storage
-                   deriving (Typeable,Show)
+                   deriving (Typeable,Show,Generic)
 instance Binary ConsumerReply where
-  put (ConsumerReplyOk)                 = put 'K'
-  put (ConsumerReplyOkTimeout d)        = put 'T' >> put d
-  put (ConsumerReplyOkNewParams p d)    = put 'P' >> put p >> put d
-  put (ConsumerReplyRetry d)            = put 'R' >> put d
-  put (ConsumerReplyRetryNewParams p d) = put 'N' >> put p >> put d
-  put (ConsumerReplyEmpty)              = put 'E'
-
-  get = do
-    sel <- get
-    case sel of
-      'K' -> return ConsumerReplyOk
-      'T' -> liftM  ConsumerReplyOkTimeout get
-      'P' -> liftM2 ConsumerReplyOkNewParams get get
-      'R' -> liftM  ConsumerReplyRetry get
-      'N' -> liftM2 ConsumerReplyRetryNewParams get get
-      'E' -> return ConsumerReplyOk
 
 -- ---------------------------------------------------------------------
 
 data PauseWaitRsp = PauseWaitRsp String
-                    deriving (Typeable,Show)
+                    deriving (Typeable,Show,Generic)
 
 instance Binary PauseWaitRsp where
-  put (PauseWaitRsp ref) = put 'P' >> put ref
-  get = do
-    sel <- get
-    case sel of
-      'P' -> liftM PauseWaitRsp get
 
 data ResumeWaitRsp = ResumeWaitRsp String
-                     deriving (Typeable,Show)
+                     deriving (Typeable,Show,Generic)
 
 instance Binary ResumeWaitRsp where
-  put (ResumeWaitRsp ref) = put 'R' >> put ref
-  get = do
-    sel <- get
-    case sel of
-      'R' -> liftM ResumeWaitRsp get
 
 {-
     ConsumerState = #eroq_consumer_state    {
@@ -302,31 +270,16 @@ data State = State
     , csSrcQueueEmptyCount :: !Integer
     , csProcessedCount     :: !Integer
     , csErrorCount         :: !Integer
-    } deriving (Show,Typeable)
+    } deriving (Show,Typeable,Generic)
 
 instance Binary State where
-  put (State a b c d e f g h i j k l m) =
-       put a >> put b >> put c >> put d >> put e >> put f >>
-       put g >> put h >> put i >> put j >> put k >> put l >> put m
-
-  get = liftM13 State get get get get get get get get get get get get get
 
 
 data ConsumerState = ConsumerActive
                    | ConsumerPaused
                    | ConsumerExit
-                   deriving (Show,Eq,Typeable)
+                   deriving (Show,Eq,Typeable,Generic)
 instance Binary ConsumerState where
-  put ConsumerActive = put 'A'
-  put ConsumerPaused = put 'P'
-  put ConsumerExit   = put 'X'
-
-  get = do
-    sel <- get
-    case sel of
-      'A' -> return ConsumerActive
-      'P' -> return ConsumerPaused
-      'E' -> return ConsumerExit
 
 --------------------------------------------------------------------------------
 -- Implementation                                                             --
@@ -397,14 +350,9 @@ handleGetState s GetState = do
 -- -record(wstate, {waiting = no, app_params = undefined}).
 
 data AppParams = AP [String]
-                 deriving (Typeable,Show)
+                 deriving (Typeable,Show,Generic)
 
 instance Binary AppParams where
-  put (AP v) = put 'P' >> put v
-  get = do
-    sel <- get
-    case sel of
-      'P' -> liftM AP get
 
 data WorkerState = WorkerState
   { wsWaiting   :: Waiting
@@ -423,34 +371,15 @@ data ConsumerMsg = ConsumerMsgPause
                  | ConsumerParams AppParams
                  | ConsumerPauseWait ProcessId String
                  | ConsumerResumeWait ProcessId String
-                 deriving (Typeable,Show)
+                 deriving (Typeable,Show,Generic)
 
 instance Binary ConsumerMsg where
-  put (ConsumerMsgPause)        = put 'P'
-  put (ConsumerMsgResume)       = put 'R'
-  put (ConsumerParams p)        = put 'A' >> put p
-  put (ConsumerPauseWait p v)   = put 'W' >> put p >> put v
-  put (ConsumerResumeWait p v)  = put 'E' >> put p >> put v
-
-  get = do
-    sel <- get
-    case sel of
-      'P' -> return ConsumerMsgPause
-      'R' -> return ConsumerMsgResume
-      'A' -> liftM  ConsumerParams get
-      'W' -> liftM2 ConsumerPauseWait get get
-      'E' -> liftM2 ConsumerResumeWait get get
 
 
 -- |Message sent to Queue Worker to get its state
 data GetState = GetState
-                 deriving (Typeable,Show)
+                 deriving (Typeable,Show,Generic)
 instance Binary GetState where
-  put GetState = put 'G'
-  get = do
-    sel <- get
-    case sel of
-      'G' -> return GetState
 
 -- ---------------------------------------------------------------------
 
