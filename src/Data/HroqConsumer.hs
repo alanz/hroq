@@ -18,32 +18,19 @@ module Data.HroqConsumer
   )
   where
 
-import Control.Concurrent
 import Control.Distributed.Process hiding (call)
-import Control.Distributed.Process.Closure
-import Control.Distributed.Process.Internal.Types (NodeId(nodeAddress))
-import Control.Distributed.Process.Node
 import Control.Distributed.Process.Platform hiding (__remoteTable)
-import Control.Distributed.Process.Platform.Async
 import Control.Distributed.Process.Platform.ManagedProcess hiding (runProcess)
 import Control.Distributed.Process.Platform.Time
-import Control.Distributed.Static (staticLabel, staticClosure)
-import Control.Monad(when,replicateM,foldM,liftM3,liftM2,liftM)
 import Data.Binary
 import Data.Hroq
 import Data.HroqApp
 import Data.HroqConsumerTH
 import Data.HroqLogger
 import Data.HroqQueue
-import Data.HroqUtil
-import Data.Maybe
-import Data.RefSerialize
 import Data.Time.Clock
 import Data.Typeable hiding (cast)
-import System.Environment (getArgs)
-import qualified Data.ByteString.Lazy.Char8 as C8
 import qualified Data.HroqMnesia as HM
-import qualified Data.Map as Map
 import GHC.Generics
 
 import qualified System.Remote.Monitoring as EKG

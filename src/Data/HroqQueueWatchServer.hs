@@ -24,19 +24,16 @@ module Data.HroqQueueWatchServer
 
 import Control.Distributed.Process hiding (call)
 import Control.Distributed.Process.Closure
-import Control.Distributed.Process.Platform hiding (__remoteTable,monitor)
 import Control.Distributed.Process.Platform.ManagedProcess hiding (runProcess)
 import Control.Distributed.Process.Platform.Time
 import Control.Distributed.Process.Serializable()
 import Control.Exception hiding (try,catch)
 import Data.Binary
-import Data.Hroq
 import Data.HroqLogger
 import Data.HroqQueueWatch
 import Data.Typeable (Typeable)
 import GHC.Generics
 import System.Environment
-import qualified Data.Map as Map
 
 
 --------------------------------------------------------------------------------
@@ -144,8 +141,8 @@ init([CallbackFun]) ->
 start_queue_watch_server :: Closure (String -> Process ()) -> Process ()
 start_queue_watch_server callbackFun = do
   logm $ "HroqQueueWatchServer:start_queue_watch_server entered"
-  -- fun <- unClosure callbackFun
-  let fun = noopFun
+  fun <- unClosure callbackFun
+  -- let fun = noopFun
   logm $ "HroqQueueWatchServer:start_queue_watch_server after unClosure"
 
   self <- getSelfPid

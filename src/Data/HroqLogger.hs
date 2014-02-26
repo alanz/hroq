@@ -9,7 +9,7 @@ module Data.HroqLogger
   )
   where
 
--- |Provide a general purpose interface to a logging subsystem. 
+-- |Provide a general purpose interface to a logging subsystem.
 -- It is based partly on the say infrastructure in
 -- Control.Distributed.Process, but using a decent logger.
 

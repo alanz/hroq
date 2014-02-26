@@ -24,7 +24,6 @@ module Data.HroqAlarmServer
 
 import Control.Distributed.Process hiding (call)
 import Control.Distributed.Process.Closure
--- import Control.Distributed.Process.Platform hiding (__remoteTable,monitor)
 import Control.Distributed.Process.Platform.ManagedProcess hiding (runProcess)
 import Control.Distributed.Process.Platform.Time
 import Control.Distributed.Process.Serializable()
@@ -34,7 +33,6 @@ import Data.Hroq
 import Data.HroqGroups
 import Data.HroqLogger
 import Data.HroqStatsGatherer
--- import Data.HroqUtil
 import Data.Time.Calendar
 import Data.Time.Clock
 import Data.Typeable (Typeable)

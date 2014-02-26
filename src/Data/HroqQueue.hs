@@ -21,15 +21,10 @@ module Data.HroqQueue
   where
 
 import Control.Distributed.Process hiding (call)
-import Control.Distributed.Process.Node
 import Control.Distributed.Process.Platform hiding (monitor)
-import Control.Distributed.Process.Platform.Async
 import Control.Distributed.Process.Platform.ManagedProcess hiding (runProcess)
 import Control.Distributed.Process.Platform.Time
-import Control.Exception as Exception
-import Control.Monad(when,replicateM,foldM,liftM3,liftM4,liftM2,liftM)
 import Data.Binary
-import Data.DeriveTH
 import Data.Hroq
 import Data.HroqGroups
 import Data.HroqLogger
@@ -37,12 +32,9 @@ import Data.HroqQueueMeta
 import Data.HroqStatsGatherer
 import Data.HroqUtil
 import Data.List
-import Data.Maybe
 import Data.Typeable (Typeable)
--- import Network.Transport.TCP (createTransportExposeInternals, defaultTCPParameters)
 import qualified Data.HroqMnesia as HM
 import qualified Data.Map as Map
-import qualified Data.Set as Set
 import GHC.Generics
 
 import qualified System.Remote.Monitoring as EKG

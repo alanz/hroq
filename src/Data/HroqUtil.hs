@@ -7,29 +7,11 @@ module Data.HroqUtil
   )
   where
 
-import Prelude hiding (catch)
-import Control.Concurrent
-import Control.Exception (SomeException)
+import Prelude -- hiding (catch)
 import Control.Distributed.Process hiding (call)
-import Control.Distributed.Process.Node
-import Control.Distributed.Process.Platform
-import Control.Distributed.Process.Platform.Async
-import Control.Distributed.Process.Platform.ManagedProcess hiding (runProcess)
-import Control.Distributed.Process.Platform.Time
-import Data.Binary
-import Data.DeriveTH
-import Data.Typeable (Typeable)
--- import Network.Transport.TCP (createTransportExposeInternals, defaultTCPParameters)
-import qualified Data.Map as Map
 import Data.Hroq
-import Data.HroqLogger
 import Data.HroqMnesia
--- import Data.TCache
--- import Data.Persistent.Collection
--- import Data.TCache.Defs
-import Data.RefSerialize
 import Data.Time.Clock
-import Data.Ratio ((%))
 
 -- ---------------------------------------------------------------------
 

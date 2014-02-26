@@ -11,26 +11,11 @@ module Data.HroqQueueMeta
   where
 
 import Control.Distributed.Process hiding (call)
-import Control.Distributed.Process.Node
-import Control.Distributed.Process.Platform
-import Control.Distributed.Process.Platform.Async
-import Control.Distributed.Process.Platform.ManagedProcess hiding (runProcess)
-import Control.Distributed.Process.Platform.Time
-import Data.Binary
-import Data.DeriveTH
 import Data.List
-import Data.Typeable (Typeable)
--- import Network.Transport.TCP (createTransportExposeInternals, defaultTCPParameters)
-import qualified Data.Map as Map
-import qualified Data.Set as Set
 import Data.Hroq
 import Data.HroqLogger
-import Data.HroqGroups
 import Data.HroqMnesia
-import Data.HroqStatsGatherer
 import Data.HroqUtil
-import Data.RefSerialize
-import qualified Data.ByteString.Lazy.Char8 as C8
 
 -- ---------------------------------------------------------------------
 

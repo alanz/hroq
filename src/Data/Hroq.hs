@@ -31,23 +31,13 @@ module Data.Hroq
   )
   where
 
-import Control.Concurrent
 import Control.Distributed.Process hiding (call)
-import Control.Distributed.Process.Node
-import Control.Distributed.Process.Platform
-import Control.Distributed.Process.Platform.Async
-import Control.Distributed.Process.Platform.ManagedProcess hiding (runProcess)
 import Control.Distributed.Process.Platform.Time
-import Control.Monad(when,replicateM,foldM,liftM5,liftM4,liftM3,liftM2,liftM)
 import Data.Binary
-import Data.HroqLogger
-import Data.Maybe
 import Data.RefSerialize
 import Data.Time.Clock
 import Data.Typeable
 import GHC.Generics
-import qualified Data.ByteString.Lazy.Char8 as C8
-import qualified Data.Map as Map
 
 -- ---------------------------------------------------------------------
 

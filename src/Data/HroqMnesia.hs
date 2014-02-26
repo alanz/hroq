@@ -44,34 +44,26 @@ module Data.HroqMnesia
   )
   where
 
-import Control.Concurrent
 import Control.Distributed.Process hiding (call,finally)
-import Control.Distributed.Process.Node
 import Control.Distributed.Process.Platform
-import Control.Distributed.Process.Platform.Async
 import Control.Distributed.Process.Platform.ManagedProcess hiding (runProcess)
 import Control.Distributed.Process.Platform.Time
 -- import Control.Exception
 import Control.Exception as Exception
-import Control.Monad(when,replicateM,foldM,liftM4,liftM3,liftM2,liftM)
+import Control.Monad(when,foldM)
 import Data.Binary
 import Data.Binary.Get
-import Data.DeriveTH
 import Data.Hroq
 import Data.HroqLogger
-import Data.IORef
 import Data.Int
 import Data.List(elemIndices,isInfixOf,(\\))
-import Data.Maybe(fromJust,fromMaybe,isNothing)
-import Data.RefSerialize
+import Data.Maybe(fromMaybe,isNothing)
 import Data.Typeable (Typeable)
-import Data.Word
-import Prelude hiding (catch)
+import Prelude -- hiding (catch)
 import System.Directory
 import System.IO
-import System.IO.Error hiding (catch)
+import System.IO.Error -- hiding (catch)
 import GHC.Generics
-import System.IO.Unsafe
 import qualified Data.ByteString.Lazy as L
 import qualified Data.ByteString.Lazy.Char8 as B
 import qualified Data.Map as Map
@@ -80,6 +72,8 @@ import qualified System.Remote.Monitoring as EKG
 
 -- ---------------------------------------------------------------------
 
+
+hroqMnesiaName :: String
 hroqMnesiaName = "HroqMnesia"
 
 maxCacheSize :: Int
@@ -459,7 +453,7 @@ getSid = do
   return pid
 
 mycall ::
-  (Typeable b, Typeable a, Binary b, Binary a) 
+  (Typeable b, Typeable a, Binary b, Binary a)
   => a -> Process b
 mycall op = do
   sid <- getSid
@@ -829,7 +823,7 @@ do_dirty_delete_q s tableName keyVal = do
   case vals' of
     [] -> do
             liftIO $ removeIfExists (tableNameToFileName tableName)
-            return () 
+            return ()
     _ -> do liftIO $ defaultWrite (tableNameToFileName tableName) (encode $ head vals')
             mapM_ (\v -> liftIO $ defaultAppend (tableNameToFileName tableName) (encode v)) $ tail vals'
   logm $ "dirty_delete_q:done"

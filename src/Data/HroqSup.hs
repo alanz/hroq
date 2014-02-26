@@ -1,31 +1,18 @@
-{-# LANGUAGE TemplateHaskell     #-}
 module Data.HroqSup
   (
   hroq_start_link
   )
   where
 
-import Control.Concurrent
 import Control.Distributed.Process hiding (call)
-import Control.Distributed.Process.Closure
-import Control.Distributed.Process.Node
-import Control.Distributed.Process.Platform
-import Control.Distributed.Process.Platform.Async
-import Control.Distributed.Process.Platform.ManagedProcess hiding (runProcess)
+-- import Control.Distributed.Process.Platform.ManagedProcess hiding (runProcess)
 import Control.Distributed.Process.Platform.Supervisor
 import Control.Distributed.Process.Platform.Time
-import Data.Binary
 import Data.HroqAlarmServer
 import Data.HroqGroups
-import Data.HroqLogDumper
 import Data.HroqLogger
 import Data.HroqStatsGatherer
 import Data.HroqQueueWatchServer
-import Data.Maybe
-import Data.RefSerialize
-import Data.Typeable
-import qualified Data.ByteString.Lazy.Char8 as C8
-import qualified Data.Map as Map
 
 -- ---------------------------------------------------------------------
 
