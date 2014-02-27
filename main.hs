@@ -6,7 +6,7 @@
 import Control.Concurrent
 import Control.Distributed.Process hiding (call)
 import Control.Distributed.Process.Node
-import Control.Distributed.Process.Platform
+import Control.Distributed.Process.Platform hiding (send)
 import Control.Distributed.Process.Platform.Time
 import Control.Distributed.Process.Platform.Timer
 import Data.Hroq
@@ -97,14 +97,20 @@ worker_supervised ekg = do
   logm $ "queues:q2=" ++ show q2a
 
 
+  sid <- getSelfPid
+
   logm "enqueue done b starting"
   -- mapM_ (\n -> enqueue qNameB (qval $ "bar" ++ (show n))) [1..10]
   -- spawnLocal $ (mapM_ (\n -> sleepFor 15 Millis >> enqueue qNameB (qval $ "bar" ++ (show n))) [1..9000])
   -- spawnLocal $ (mapM_ (\n -> sleepFor 20 Millis >> enqueue qNameA (qval $ "bar" ++ (show n))) [1..9000])
-  spawnLocal $ (mapM_ (\n -> {- sleepFor 10 Micros >> -} enqueue qNameB (qval $ "bar" ++ (show n))) [1..10000])
-  spawnLocal $ (mapM_ (\n -> {- sleepFor 10 Micros >> -} enqueue qNameA (qval $ "bar" ++ (show n))) [1..10000])
+  spawnLocal $ (mapM_ (\n -> {- sleepFor 10 Micros >> -} enqueue qNameB (qval $ "bar" ++ (show n))) [1..180000] >> send sid 'b')
+  spawnLocal $ (mapM_ (\n -> {- sleepFor 10 Micros >> -} enqueue qNameA (qval $ "bar" ++ (show n))) [1..180000] >> send sid 'a')
   logm "enqueue done b 1"
 
+  done1 <- expect :: Process Char
+  logm $ "got done1:" ++ show done1
+  done2 <- expect :: Process Char
+  logm $ "got done2:" ++ show done2
 
   sleepFor 30 Seconds
   logm "worker_supervised done"
