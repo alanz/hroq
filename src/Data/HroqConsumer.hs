@@ -21,21 +21,23 @@ module Data.HroqConsumer
 import Control.Distributed.Process hiding (call)
 import Control.Distributed.Process.Platform hiding (__remoteTable)
 import Control.Distributed.Process.Platform.ManagedProcess hiding (runProcess)
-import Control.Distributed.Process.Platform.Time
+import Control.Distributed.Process.Platform.Time hiding (microsecondsToNominalDiffTime,diffTimeToDelay,delayToDiffTime)
+import Data.AdditiveGroup
+import Data.AffineSpace
 import Data.Binary
 import Data.Hroq
 import Data.HroqApp
 import Data.HroqConsumerTH
 import Data.HroqLogger
 import Data.HroqQueue
-import Data.Time.Clock
+import Data.Thyme.Clock
 import Data.Typeable hiding (cast)
-import qualified Data.HroqMnesia as HM
 import GHC.Generics
+import qualified Data.HroqMnesia as HM
 
 import qualified System.Remote.Monitoring as EKG
 
-pROCESSING_ERROR_DELAY = microsecondsToNominalDiffTime (2 * 10^6)
+pROCESSING_ERROR_DELAY = microsecondsToNominalDiffTime (fromIntegral (2 * 10^6))
 
 --------------------------------------------------------------------------------
 -- API                                                                        --
@@ -444,11 +446,13 @@ worker_loop cName cPid state wState = do
          WaitNo -> return $ Delay $ milliSeconds 0
          WaitResume t0 sleepTimeMs -> do
            now <- liftIO getCurrentTime
-           let diffMs = diffUTCTime now t0
+           -- let diffMs = diffUTCTime now t0
+           let diffMs =  now .-. t0
            if sleepTimeMs > diffMs
-                -- then return $ sleepTimeMs - diffMs
+{-
                 then return $ Delay $ milliSeconds
                             $ round (((realToFrac sleepTimeMs) - (realToFrac diffMs)) * 1000)
+-}              then return $ diffTimeToDelay (sleepTimeMs ^-^ diffMs)
                 else return $ Delay $ milliSeconds 0
          WaitQueue -> return Infinity
     _ -> return Infinity

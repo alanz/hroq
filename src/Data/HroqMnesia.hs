@@ -48,7 +48,6 @@ import Control.Distributed.Process hiding (call,finally)
 import Control.Distributed.Process.Platform
 import Control.Distributed.Process.Platform.ManagedProcess hiding (runProcess)
 import Control.Distributed.Process.Platform.Time
--- import Control.Exception
 import Control.Exception as Exception
 import Control.Monad(when,foldM)
 import Data.Binary
@@ -59,10 +58,10 @@ import Data.Int
 import Data.List(elemIndices,isInfixOf,(\\))
 import Data.Maybe(fromMaybe,isNothing)
 import Data.Typeable (Typeable)
-import Prelude -- hiding (catch)
+import Prelude
 import System.Directory
 import System.IO
-import System.IO.Error -- hiding (catch)
+import System.IO.Error
 import GHC.Generics
 import qualified Data.ByteString.Lazy as L
 import qualified Data.ByteString.Lazy.Char8 as B

@@ -8,6 +8,7 @@ rm -fr .hroqdata
 #./dist/build/hroq/hroq +RTS -hc -xt -RTS
 #./dist/build/hroq/hroq +RTS -hc -p -RTS
 #./dist/build/hroq/hroq +RTS -hc -p  -RTS
+./dist/build/hroq/hroq +RTS -hc -p -xc -RTS
 
 # Get data by originating module
 #./dist/build/hroq/hroq +RTS -hm -RTS
@@ -15,7 +16,7 @@ rm -fr .hroqdata
 #./dist/build/hroq/hroq +RTS -hmData.HroqQueue -RTS
 
 # Get data by closure description
-./dist/build/hroq/hroq +RTS -hd -p -xc -RTS
+#./dist/build/hroq/hroq +RTS -hd -p -xc -RTS
 
 # Get data by type
 #./dist/build/hroq/hroq +RTS -hy -RTS
@@ -28,6 +29,6 @@ rm -fr .hroqdata
 #./dist/build/hroq/hroq +RTS -hc -hbdrag,void -RTS
 
 
-
+profiteur hroq.prof
 hp2ps -c hroq.hp
 

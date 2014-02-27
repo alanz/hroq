@@ -3,6 +3,7 @@
 {-# LANGUAGE StandaloneDeriving   #-}
 {-# LANGUAGE TemplateHaskell      #-}
 {-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE ScopedTypeVariables  #-}
 
 module Data.Hroq
   (
@@ -28,23 +29,39 @@ module Data.Hroq
   -- *bucket types
   , ProcBucket(..)
   , OverflowBucket(..)
+
+  -- * Thyme related
+  , timeIntervalToDiffTime
+  , diffTimeToTimeInterval
+  , diffTimeToMicroSeconds
+  , diffTimeToDelay
+  , delayToDiffTime
+  , microsecondsToNominalDiffTime
+  , microSecondsPerSecond
   )
   where
 
+import Control.Distributed.Process.Platform.Time hiding (delayToDiffTime,timeIntervalToDiffTime,diffTimeToDelay,microsecondsToNominalDiffTime,diffTimeToTimeInterval,NominalDiffTime)
 import Control.Distributed.Process hiding (call)
-import Control.Distributed.Process.Platform.Time
+import Control.Lens
+import Data.AffineSpace
 import Data.Binary
+import Data.HroqLogger
+import Data.Ratio ((%))
 import Data.RefSerialize
-import Data.Time.Clock
+import Data.Thyme.Calendar
+import Data.Thyme.Clock
+import Data.Thyme.Format
+import Data.Thyme.Time.Core
 import Data.Typeable
 import GHC.Generics
 
 -- ---------------------------------------------------------------------
 
 -- -define(MAX_BUCKET_SIZE,  eroq_util:app_param(max_bucket_size, 5000)).
--- maxBucketSize = 5000
+maxBucketSizeConst = 5000
 -- maxBucketSizeConst = 5
-maxBucketSizeConst = 50
+-- maxBucketSizeConst = 50
 -- maxBucketSizeConst = 500
 
 -- ---------------------------------------------------------------------
@@ -99,10 +116,12 @@ instance Serialize QEntry where
   readp = readpBinary
 
 instance Binary NominalDiffTime where
-  put ndt = put ((round ndt)::Integer)
+  put ndt = put ((toSeconds ndt) :: Float)
   get = do
-    val <- get
-    return $ microsecondsToNominalDiffTime val
+    (val :: Float) <- get
+    return $ fromSeconds val
+
+
 
 -- ---------------------------------------------------------------------
 
@@ -174,5 +193,45 @@ getTimeStamp = do
 
 nullTimeStamp :: TimeStamp
 nullTimeStamp = TS "*notset*"
+
+-- ---------------------------------------------------------------------
+
+-- TODO: give these back into distributed-process-platform
+
+-- | given a @TimeInterval@, provide an equivalent @NominalDiffTim@
+timeIntervalToDiffTime :: TimeInterval -> NominalDiffTime
+timeIntervalToDiffTime ti = microsecondsToNominalDiffTime (fromIntegral $ asTimeout ti)
+
+-- | given a @NominalDiffTim@@, provide an equivalent @TimeInterval@
+diffTimeToTimeInterval :: NominalDiffTime -> TimeInterval
+diffTimeToTimeInterval dt = microSeconds $ round $ diffTimeToMicroSeconds dt
+
+{-# INLINE diffTimeToMicroSeconds #-}
+diffTimeToMicroSeconds :: (TimeDiff t, Fractional n) => t -> n
+diffTimeToMicroSeconds = (* recip 1000) . fromIntegral . view microseconds
+
+
+
+-- | given a @NominalDiffTim@@, provide an equivalent @Delay@
+diffTimeToDelay :: NominalDiffTime -> Delay
+diffTimeToDelay dt = Delay $ diffTimeToTimeInterval dt
+
+-- | given a @Delay@, provide an equivalent @NominalDiffTim@
+delayToDiffTime :: Delay -> NominalDiffTime
+delayToDiffTime (Delay ti) = timeIntervalToDiffTime ti
+delayToDiffTime Infinity   = error "trying to convert Delay.Infinity to a NominalDiffTime"
+delayToDiffTime (NoDelay)  = microsecondsToNominalDiffTime 0
+
+-- | Create a 'NominalDiffTime' from a number of microseconds.
+microsecondsToNominalDiffTime :: Integer -> NominalDiffTime
+-- microsecondsToNominalDiffTime x = fromRational (x % (fromIntegral microSecondsPerSecond))
+microsecondsToNominalDiffTime x = fromSeconds (x % microSecondsPerSecond)
+
+{-# INLINE microSecondsPerSecond #-}
+microSecondsPerSecond :: Integer
+microSecondsPerSecond = 1000000
+
+
+
 
 -- ---------------------------------------------------------------------

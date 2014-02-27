@@ -11,7 +11,8 @@ import Prelude -- hiding (catch)
 import Control.Distributed.Process hiding (call)
 import Data.Hroq
 import Data.HroqMnesia
-import Data.Time.Clock
+-- import Data.Time.Clock
+import Data.Thyme.Clock
 
 -- ---------------------------------------------------------------------
 

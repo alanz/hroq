@@ -15,8 +15,9 @@ module Data.HroqLogger
 
 import Control.Distributed.Process hiding (call)
 import Control.Distributed.Process.Node
-import Data.Time.Clock (getCurrentTime)
-import Data.Time.Format (formatTime)
+-- import Data.Time.Clock (getCurrentTime)
+import Data.Thyme.Clock (getCurrentTime)
+import Data.Thyme.Format (formatTime)
 import System.IO
 import System.Locale (defaultTimeLocale)
 import System.Log.Handler.Simple

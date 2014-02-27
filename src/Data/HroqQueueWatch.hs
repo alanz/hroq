@@ -31,8 +31,10 @@ import Data.Hroq
 import Data.HroqGroups
 import Data.HroqLogger
 import Data.HroqStatsGatherer
-import Data.Time.Calendar
-import Data.Time.Clock
+-- import Data.Time.Calendar
+import Data.Thyme.Calendar
+-- import Data.Time.Clock
+import Data.Thyme.Clock
 import Data.Typeable (Typeable)
 import GHC.Generics
 import System.Environment

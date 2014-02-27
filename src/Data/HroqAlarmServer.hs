@@ -1,6 +1,7 @@
 {-# LANGUAGE TemplateHaskell      #-}
 {-# LANGUAGE DeriveDataTypeable   #-}
 {-# LANGUAGE DeriveGeneric        #-}
+{-# LANGUAGE ScopedTypeVariables  #-}
 module Data.HroqAlarmServer
   (
   -- * Starting the server
@@ -25,16 +26,22 @@ module Data.HroqAlarmServer
 import Control.Distributed.Process hiding (call)
 import Control.Distributed.Process.Closure
 import Control.Distributed.Process.Platform.ManagedProcess hiding (runProcess)
-import Control.Distributed.Process.Platform.Time
+import Control.Distributed.Process.Platform.Time hiding (delayToDiffTime,timeIntervalToDiffTime,diffTimeToDelay,microsecondsToNominalDiffTime,diffTimeToTimeInterval,NominalDiffTime)
 import Control.Distributed.Process.Serializable()
 import Control.Exception hiding (try,catch)
+import Control.Lens
+import Data.AffineSpace
+import Data.Ratio ((%))
 import Data.Binary
 import Data.Hroq
 import Data.HroqGroups
 import Data.HroqLogger
 import Data.HroqStatsGatherer
-import Data.Time.Calendar
-import Data.Time.Clock
+-- import Data.Time.Calendar
+import Data.Thyme.Calendar
+-- import Data.Time.Clock
+import Data.Thyme.Clock
+import Data.Thyme.Time.Core
 import Data.Typeable (Typeable)
 import GHC.Generics
 import System.Environment
@@ -92,7 +99,12 @@ type Internal = (String,QName,Integer,Integer)
 noopFun _ = return ()
 
 emptyState :: State
-emptyState = ST (UTCTime (fromGregorian 1900 0 0) 0) Map.empty noopFun []
+-- emptyState = ST (UTCTime (fromGregorian 1900 0 0) 0) Map.empty noopFun []
+-- emptyState = ST (fromSeconds 0) Map.empty noopFun []
+emptyState = ST dayZero Map.empty noopFun []
+
+dayZero :: UTCTime
+dayZero = mkUTCTime (fromGregorian 0 0 0) (fromSeconds 0)
 
 -- ---------------------------------------------------------------------
 
@@ -197,6 +209,7 @@ init([CallbackFun]) ->
 
 start_alarm_server :: Process ()
 start_alarm_server = do
+  logm $ "HroqAlarmServer:start_alarm_server entered"
   self <- getSelfPid
   register hroqAlarmSrverProcessName self
   serve 0 initFunc serverDefinition
@@ -313,8 +326,10 @@ do_safe_alarm_processing :: State -> Bool -> Process (State, Delay)
 do_safe_alarm_processing st force = do
   -- logm $ "HroqAlarmServer:do_safe_alarm_processing:force=" ++ show force
   now <- liftIO $ getCurrentTime
-  let ageMs = diffUTCTime now (stLastCheck st)
-  if force == True || ageMs > delayToDiffTime mONITOR_INTERVAL_MS
+  -- let ageMs = diffUTCTime now (stLastCheck st)
+  let ageMs :: NominalDiffTime = now .-. (stLastCheck st)
+  -- let ageMs = toThyme $ now ^-^ (stLastCheck st)
+  if force == True || (ageMs > delayToDiffTime mONITOR_INTERVAL_MS)
     then do
       result <- do_alarm_processing st
       case result of
@@ -322,7 +337,11 @@ do_safe_alarm_processing st force = do
         Left err -> do
           logm $ "HroqAlarmServer.do_safe_alarm_processing:got err:" ++ show err
           return (st,mONITOR_INTERVAL_MS)
-    else return (st,mONITOR_INTERVAL_MS - diffTimeToDelay ageMs)
+    else return (st,mONITOR_INTERVAL_MS - (diffTimeToDelay $ ageMs))
+
+
+
+
 
 -- ---------------------------------------------------------------------
 {-
@@ -355,7 +374,12 @@ do_alarm_processing st = do
   -- logm $ "HroqAlarmServer:do_alarm_processing entered"
 
   qs <- queues
-  queueStats <- traverse_get_queue_stats qs []
+  -- queueStats <- traverse_get_queue_stats qs []
+  let h :: SomeException -> Process [Internal]
+      h e = do
+        logm $ "HroqAlarmServer: traverse_get_queue_stats e:" ++ show e
+        return []
+  queueStats <- catch (traverse_get_queue_stats qs []) h
   -- logm $ "HroqAlarmServer:do_alarm_processing got stats:" ++ show queueStats
 
   -- TODO: use something like dyre to look this up
@@ -630,10 +654,15 @@ determine_alarms queueType stringQueueName queueSize dequeueCount (h:t) statsDic
 
                 if (lastDeqCount == dequeueCount) && (queueSize > 0)
                   then do
-                    let queueStaticAgeSecs = diffUTCTime now lastChangeTimestamp
+                    -- let queueStaticAgeSecs = diffUTCTime now lastChangeTimestamp
+                    -- let queueStaticAgeSecs = toSeconds $ now ^-^ lastChangeTimestamp
+                    let queueStaticAgeSecs = now .-. lastChangeTimestamp
                     (staticAlarmList,staticAlarmTriggers) <- do
-                      if (queueSize > 0) && (lastDeqCount == dequeueCount) && (queueStaticAgeSecs > (timeIntervalToDiffTime $ seconds $ fromIntegral maxStaticTimeSecs)) 
-                        then return (inc_alarm_count alarmName maxSizeAlarmList, (AT TriggerQueue stringQueueName (TriggerStatic maxStaticTimeSecs queueStaticAgeSecs)):maxSizeAlarmTriggers)
+                      -- if (queueSize > 0) && (lastDeqCount == dequeueCount) && (queueStaticAgeSecs > (timeIntervalToDiffTime $ seconds $ fromIntegral maxStaticTimeSecs)) 
+                      if (queueSize > 0) && (lastDeqCount == dequeueCount) && (queueStaticAgeSecs > fromSeconds maxStaticTimeSecs)
+                        then do
+                         let ageNominalDiff :: NominalDiffTime = now .-. lastChangeTimestamp
+                         return (inc_alarm_count alarmName maxSizeAlarmList, (AT TriggerQueue stringQueueName (TriggerStatic maxStaticTimeSecs ageNominalDiff)):maxSizeAlarmTriggers)
                         else return (maxSizeAlarmList,maxSizeAlarmTriggers)
 
                     return (Map.insert stringQueueName ({- lastQueueSize,-} lastDeqCount,lastChangeTimestamp) statsDict, staticAlarmList, staticAlarmTriggers)

@@ -44,7 +44,7 @@ executable hroq
     -- The -threaded and -with-rtsopts=-T are needed for EKG
     -threaded
     -with-rtsopts=-T
-    -- -rtsopts=all
+    -rtsopts=all
     -- -prof -auto
     -- -fhpc
   -- other-modules:       
@@ -70,6 +70,9 @@ executable hroq
                        -- , regex-pcre-builtin
                        , regex-base
                        , regex-tdfa
+                       , thyme
+                       , vector-space
+                       , lens
 
 test-suite StatsGathererTests
   type:            exitcode-stdio-1.0
@@ -93,6 +96,9 @@ test-suite StatsGathererTests
                    , test-framework
                    , test-framework-hunit
                    , time
+                   , thyme
+                   , vector-space
+                   , lens
   hs-source-dirs:
                    tests src
   ghc-options:     -Wall -threaded -rtsopts -with-rtsopts=-N
@@ -124,6 +130,9 @@ test-suite AlarmServerTests
                    , time
                    , regex-base
                    , regex-tdfa
+                   , thyme
+                   , vector-space
+                   , lens
   hs-source-dirs:
                    tests src
   ghc-options:     -Wall -threaded -rtsopts -with-rtsopts=-N
