@@ -10,6 +10,7 @@ import Control.Distributed.Process.Platform.Supervisor
 import Control.Distributed.Process.Platform.Time
 import Data.HroqAlarmServer
 import Data.HroqGroups
+import Data.HroqHandlePool
 import Data.HroqLogger
 import Data.HroqStatsGatherer
 import Data.HroqQueueWatchServer
@@ -83,12 +84,14 @@ childSpec alarmFun queueWatchFun =
     , defaultWorker hroqGroups
     , defaultWorker hroqAlarms
     , defaultWorker hroqQueueWatch
+    , defaultWorker hroqHandlePool
     ]
   where
     hroqStatsGatherer = RunClosure hroq_stats_gatherer_closure
     hroqGroups        = RunClosure hroq_groups_closure
     hroqAlarms        = RunClosure hroq_alarm_server_closure
     hroqQueueWatch    = RunClosure (hroq_queue_watch_server_closure queueWatchNoOpCallbackClosure)
+    hroqHandlePool    = RunClosure hroq_handle_pool_server_closure
 
 defaultWorker :: ChildStart -> ChildSpec
 defaultWorker clj =

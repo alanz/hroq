@@ -27,6 +27,7 @@ import Control.Distributed.Process.Platform.Time
 import Data.Binary
 import Data.Hroq
 import Data.HroqGroups
+import Data.HroqHandlePool
 import Data.HroqLogger
 import Data.HroqQueueMeta
 import Data.HroqStatsGatherer
@@ -139,6 +140,7 @@ data State = QueueState
    , qsIndexList          :: ![QKey]
    , qsSubscriberPidDict  :: !(Map.Map ProcessId MonitorRef)
    , qsMnesiaSid          :: !ProcessId
+   , qsHandlePoolPid      :: !ProcessId
    , qsEkg                :: !EKG.Server
    }
 
@@ -218,6 +220,7 @@ initFunc (queueName,appInfo,doCleanup,ekg) = do
     logm $ "HroqQueue:initFunc 5"
 
     mnesiaSid <- HM.getSid
+    handlePoolPid <- hroq_handle_pool_server_pid
     let s = QueueState
              { qsAppInfo            = appInfo
              , qsCurrProcBucket     = currProcBucket
@@ -231,6 +234,7 @@ initFunc (queueName,appInfo,doCleanup,ekg) = do
              , qsIndexList          = sort allKeys
              , qsSubscriberPidDict  = Map.empty
              , qsMnesiaSid          = mnesiaSid
+             , qsHandlePoolPid      = handlePoolPid
              , qsEkg                = ekg
              }
 
@@ -435,7 +439,9 @@ enqueue_one_message queueName v s = do
   logt $ "enqueue_one_message 2"
 
   -- HM.dirty_write_q enqueueWorkBucket msgRecord
-  HM.dirty_write_q_sid (qsMnesiaSid s)  enqueueWorkBucket msgRecord
+  -- HM.dirty_write_q_sid (qsMnesiaSid s)  enqueueWorkBucket msgRecord
+  append (qsHandlePoolPid s) (HM.tableNameToFileName enqueueWorkBucket) (encode msgRecord)
+
   let newTotalQueuedMsg = (qsTotalQueueSize s) + 1
       newEnqueueCount   = (qsEnqueueCount s)   + 1
   -- logm $ "enqueue_one_message:write done"

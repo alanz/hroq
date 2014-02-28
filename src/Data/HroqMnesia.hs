@@ -38,6 +38,7 @@ module Data.HroqMnesia
   -- * debug
   , queueExists
   , log_state
+  , tableNameToFileName
 
   , State (..)
   , do_dirty_write_q
@@ -53,6 +54,7 @@ import Control.Monad(when,foldM)
 import Data.Binary
 import Data.Binary.Get
 import Data.Hroq
+import Data.HroqHandlePool
 import Data.HroqLogger
 import Data.Int
 import Data.List(elemIndices,isInfixOf,(\\))
@@ -733,7 +735,9 @@ do_dirty_write_q s tableName record = do
   -- logm $ "HroqMnesia.dirty_write_q:" ++ (show (tableName,record))
 
   -- logm $ "HroqMnesia.not doing physical write" -- ++AZ++
-  liftIO $ defaultAppend (tableNameToFileName tableName) (encode record)
+  -- liftIO $ defaultAppend (tableNameToFileName tableName) (encode record)
+  hsid <- hroq_handle_pool_server_pid -- TODO: cache this in State
+  append hsid (tableNameToFileName tableName) (encode record)
 
   let s' = insertEntryQ s tableName record
   return s'

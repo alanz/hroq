@@ -210,8 +210,6 @@ diffTimeToTimeInterval dt = microSeconds $ round $ diffTimeToMicroSeconds dt
 diffTimeToMicroSeconds :: (TimeDiff t, Fractional n) => t -> n
 diffTimeToMicroSeconds = (* recip 1000) . fromIntegral . view microseconds
 
-
-
 -- | given a @NominalDiffTim@@, provide an equivalent @Delay@
 diffTimeToDelay :: NominalDiffTime -> Delay
 diffTimeToDelay dt = Delay $ diffTimeToTimeInterval dt

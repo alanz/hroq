@@ -1,1 +1,2 @@
 * Move into the Data.Concurrent.Queue namespace
+* cache the pid in client modules instead of looking it up each time in the server API
