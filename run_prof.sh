@@ -9,8 +9,8 @@ rm -fr .hroqdata
 #./dist/build/hroq/hroq +RTS -hc -p -RTS
 #./dist/build/hroq/hroq +RTS -hc -p  -RTS
 #./dist/build/hroq/hroq +RTS -hc -p -xc  -N 4 -RTS
-#./dist/build/hroq/hroq +RTS -hc -p   -N4 -RTS
-./dist/build/hroq/hroq +RTS -hc -p  -RTS
+./dist/build/hroq/hroq +RTS -hc -p   -N4 -RTS
+#./dist/build/hroq/hroq +RTS -hc -p  -RTS
 
 # Get data by originating module
 #./dist/build/hroq/hroq +RTS -hm -RTS

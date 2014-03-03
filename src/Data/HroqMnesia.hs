@@ -406,8 +406,8 @@ dirty_write_ls :: TableName -> ConsumerMessage -> Process ()
 dirty_write_ls tablename val = mycall (DirtyWriteLS tablename val)
 -}
 
-table_info :: TableName -> TableInfoReq -> Process TableInfoRsp
-table_info tableName req = mycall (TableInfo tableName req)
+table_info :: ProcessId -> TableName -> TableInfoReq -> Process TableInfoRsp
+table_info pid tableName req = call pid (TableInfo tableName req)
 
 wait_for_tables :: [TableName] -> Delay -> Process ()
 wait_for_tables tables delay = mycall (WaitForTables tables delay)

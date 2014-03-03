@@ -19,6 +19,7 @@ import Control.Distributed.Process.Node
 import Data.Thyme.Clock (getCurrentTime)
 import Data.Thyme.Format (formatTime)
 import System.IO
+import System.IO.Unsafe
 import System.Locale (defaultTimeLocale)
 import System.Log.Handler.Simple
 import System.Log.Logger
@@ -87,13 +88,14 @@ logm string = do
 -- to the process registered as 'hroqlogger'.
 logt :: String -> Process ()
 logt string = do
-  {-
-  now <- liftIO getCurrentTime
-  us  <- getSelfPid
-  -- let timeStr = formatTime defaultTimeLocale "%c" now
-  let timeStr = show now -- Include us timing
-  nsend registeredLoggerName (timeStr, us, string)
-  -}
+  if False
+    then do
+      now <- liftIO $ getCurrentTime
+      us  <- getSelfPid
+      -- let timeStr = formatTime defaultTimeLocale "%c" now
+      let timeStr = show now -- Include us timing
+      nsend registeredLoggerName (timeStr, us, string)
+    else return ()
   return ()
 
 

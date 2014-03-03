@@ -62,12 +62,14 @@ worker_supervised ekg = do
   logm $ "worker_supervised started:pid=" ++ show pid
   sleepFor 2 Seconds
 
+  alarmPid <- hroq_alarm_server_pid
+
   -- check the alarm server is alive
   logm $ "worker_supervised alarm server check starting"
-  rc <- check
+  rc <- check alarmPid
   logm $ "worker_supervised alarm server check done:got" ++ show rc
 
-  rt <- triggers
+  rt <- triggers alarmPid
   logm $ "worker_supervised alarm server triggers done:got" ++ show rt
 
 
@@ -109,8 +111,8 @@ worker_supervised ekg = do
   -- mapM_ (\n -> enqueue qNameB (qval $ "bar" ++ (show n))) [1..10]
   -- spawnLocal $ (mapM_ (\n -> sleepFor 15 Millis >> enqueue qNameB (qval $ "bar" ++ (show n))) [1..numberToEnqueue])
   -- spawnLocal $ (mapM_ (\n -> sleepFor 20 Millis >> enqueue qNameA (qval $ "bar" ++ (show n))) [1..numberToEnqueue])
-  spawnLocal $ (mapM_ (\n -> {- sleepFor 10 Micros >> -} enqueue qNameB (qval $ "bar" ++ (show n))) [1..numberToEnqueue] >> send sid 'b')
-  spawnLocal $ (mapM_ (\n -> {- sleepFor 10 Micros >> -} enqueue qNameA (qval $ "bar" ++ (show n))) [1..numberToEnqueue] >> send sid 'a')
+  spawnLocal $ (mapM_ (\n -> {- sleepFor 10 Micros >> -} enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..numberToEnqueue] >> send sid 'b')
+  spawnLocal $ (mapM_ (\n -> {- sleepFor 10 Micros >> -} enqueue qSida qNameA (qval $ "bar" ++ (show n))) [1..numberToEnqueue] >> send sid 'a')
   logm "enqueue done b 1"
 
   done1 <- expect :: Process Char
@@ -121,7 +123,7 @@ worker_supervised ekg = do
   endTime <- liftIO getCurrentTime
   logm $ "(time,numberToEnqueue=)" ++ show (endTime .-. startTime,numberToEnqueue)
 
-  sleepFor 30 Seconds
+  sleepFor 10 Seconds
   logm "worker_supervised done"
 
   return ()
@@ -174,15 +176,15 @@ worker ekg = do
 
   liftIO $ threadDelay (5*1000000) -- 1 seconds
   logm "enqueue done b starting"
-  mapM_ (\n -> enqueue qNameB (qval $ "bar" ++ (show n))) [1..1]
+  mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..1]
   logm "enqueue done b 1"
 
   liftIO $ threadDelay (1*1000000) -- 1 seconds
-  mapM_ (\n -> enqueue qNameB (qval $ "bar" ++ (show n))) [2..2]
+  mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [2..2]
   logm "enqueue done b 2"
 
   liftIO $ threadDelay (1*1000000) -- 1 seconds
-  mapM_ (\n -> enqueue qNameB (qval $ "bar" ++ (show n))) [3..3]
+  mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [3..3]
   logm "enqueue done b 3"
 
   -- mapM_ (\n -> enqueue qSida qNameA (qval $ "aaa" ++ (show n))) [1..8]
@@ -268,15 +270,15 @@ startConsumer :: (ConsumerName,String,QName,QName,ConsumerFuncClosure,AppParams,
 
   liftIO $ threadDelay (5*1000000) 
   logm "enqueue starting SLAP"
-  mapM_ (\n -> enqueue (QN "SLAP") (qval $ "bar" ++ (show n))) [1..8000]
+  mapM_ (\n -> enqueue qPid (QN "SLAP") (qval $ "bar" ++ (show n))) [1..8000]
   logm "enqueue done SLAP 1"
 
   liftIO $ threadDelay (3*1000000) 
-  mapM_ (\n -> enqueue (QN "SLAP") (qval $ "baz" ++ (show n))) [1..8000]
+  mapM_ (\n -> enqueue qPid (QN "SLAP") (qval $ "baz" ++ (show n))) [1..8000]
   logm "enqueue done SLAP 2"
 
   liftIO $ threadDelay (3*1000000) 
-  mapM_ (\n -> enqueue (QN "SLAP") (qval $ "bat" ++ (show n))) [1..8000]
+  mapM_ (\n -> enqueue qPid (QN "SLAP") (qval $ "bat" ++ (show n))) [1..8000]
   logm "enqueue done SLAP 3"
 
   liftIO $ threadDelay (1*1000000) -- 1 seconds

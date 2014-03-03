@@ -16,11 +16,11 @@ import Data.HroqQueue
 
 -- ---------------------------------------------------------------------
 
-
 requeuer :: QName -> WorkerFunc
 requeuer destQ entry@(QE _ qv) = do
   logm $ "purger:" ++ (show (destQ,entry))
-  enqueue destQ qv
+  qpid <- Data.HroqQueue.getSid destQ
+  enqueue qpid destQ qv
   return (Right ())
 
 {-

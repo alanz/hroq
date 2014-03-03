@@ -6,6 +6,7 @@ module Data.HroqStatsGatherer
   -- * Starting the server
     hroq_stats_gatherer
   , hroq_stats_gatherer_closure
+  , hroq_stats_gatherer_pid
 
   -- * API
   , publish_queue_stats
@@ -108,6 +109,9 @@ data StatsType = StatsQueue QName | StatsConsumer ConsumerName
 hroq_stats_gatherer :: Process ()
 hroq_stats_gatherer = start_stats_gatherer
 
+hroq_stats_gatherer_pid :: Process ProcessId
+hroq_stats_gatherer_pid = getServerPid
+
 --------------------------------------------------------------------------------
 -- API                                                                        --
 --------------------------------------------------------------------------------
@@ -117,9 +121,9 @@ hroq_stats_gatherer = start_stats_gatherer
 publish_queue_stats(QueueName, Stats)->
     gen_server:cast(?MODULE, {publish_queue_stats, QueueName, self(), Stats}).
 -}
-publish_queue_stats :: QName -> QStats -> Process ()
-publish_queue_stats qname stats = do
-  pid <- getServerPid
+publish_queue_stats :: ProcessId -> QName -> QStats -> Process ()
+publish_queue_stats pid qname stats = do
+  -- pid <- getServerPid
   sid <- getSelfPid
   cast pid (PublishQueueStats qname stats sid)
 
@@ -128,9 +132,9 @@ publish_queue_stats qname stats = do
 publish_consumer_stats(ConsName, Stats)->
     gen_server:cast(?MODULE, {publish_consumer_stats, ConsName, self(), Stats}).
 -}
-publish_consumer_stats :: ConsumerName -> QStats -> Process ()
-publish_consumer_stats cname stats = do
-  pid <- getServerPid
+publish_consumer_stats :: ProcessId -> ConsumerName -> QStats -> Process ()
+publish_consumer_stats pid cname stats = do
+  -- pid <- getServerPid
   sid <- getSelfPid
   cast pid (PublishConsumerStats cname stats sid)
 
@@ -139,9 +143,9 @@ publish_consumer_stats cname stats = do
 get_queue_stats(QueueName) ->
     gen_server:call(?MODULE, {get_queue_stats, QueueName}, infinity).
 -}
-get_queue_stats :: QName -> Process GetQueueStatsReply
-get_queue_stats qname = do
-  pid <- getServerPid
+get_queue_stats :: ProcessId -> QName -> Process GetQueueStatsReply
+get_queue_stats pid qname = do
+  -- pid <- getServerPid
   call pid (GetQueueStats qname)
 
 -- -------------------------------------
@@ -149,9 +153,9 @@ get_queue_stats qname = do
 get_consumer_stats(ConsName) ->
     gen_server:call(?MODULE, {get_consumer_stats, ConsName}, infinity).
 -}
-get_consumer_stats :: ConsumerName -> Process GetConsumerStatsReply
-get_consumer_stats cname = do
-  pid <- getServerPid
+get_consumer_stats :: ProcessId -> ConsumerName -> Process GetConsumerStatsReply
+get_consumer_stats pid cname = do
+  -- pid <- getServerPid
   call pid (GetConsumerStats cname)
 
 -- -------------------------------------
@@ -326,6 +330,7 @@ handlePublishQueueStatsCast st@(ST { stQdict = qd, stPdict = pd }) (PublishQueue
           Just _ -> return pd
 
           Nothing -> do
+            logm $ "HroqStatsGatherer.handlePublishQueueStatsCast: creating monitor for:" ++ show pid
             _mref <- monitor pid
             return $ Map.insert pid (StatsQueue q) pd
 

@@ -84,8 +84,8 @@ queue_watch(QueueWatchConstructs)->
     end.
 -}
 
-queue_watch :: [(String,String,Metric)] -> Process String
-queue_watch queueWatchConstructs = do
+queue_watch :: ProcessId -> [(String,String,Metric)] -> Process String
+queue_watch statsPid queueWatchConstructs = do
   logt $ "HroqQueueWatch.queue_watch entered"
 
   let handler :: SomeException -> Process [(String,Regex,Metric)]
@@ -96,7 +96,7 @@ queue_watch queueWatchConstructs = do
 
   qs <- queues
   ts <- make_timestamp
-  finalDict <- do_queue_watch_queues qs Map.empty preprocessedCons
+  finalDict <- do_queue_watch_queues statsPid qs Map.empty preprocessedCons
   return $ ts ++ (construct_queue_watch_string finalDict preprocessedCons)
 
 {-
@@ -260,16 +260,17 @@ do_queue_watch_queues([QueueName | T], Dict, QueueWatchConstructs)->
     do_queue_watch_queues(T, NewDict, QueueWatchConstructs).
 -}
 
-do_queue_watch_queues ::
-  [QName] -> Map.Map String Integer-> [(String, Regex, Metric)]
+do_queue_watch_queues
+ :: ProcessId
+ -> [QName] -> Map.Map String Integer-> [(String, Regex, Metric)]
   -> Process (Map.Map String Integer)
-do_queue_watch_queues [] dict _ = return dict
-do_queue_watch_queues (queueName:t) dict queueWatchConstructs = do
-  mQueueStats <- get_queue_stats queueName
+do_queue_watch_queues _ [] dict _ = return dict
+do_queue_watch_queues statsPid (queueName:t) dict queueWatchConstructs = do
+  mQueueStats <- get_queue_stats statsPid queueName
   let newDict = case mQueueStats of
         ReplyQStats queueStats -> process_queue queueStats dict queueWatchConstructs
         ReplyQStatsNotFound -> dict
-  do_queue_watch_queues t newDict queueWatchConstructs
+  do_queue_watch_queues statsPid t newDict queueWatchConstructs
 
 -- ---------------------------------------------------------------------
 {-

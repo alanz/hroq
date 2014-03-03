@@ -10,6 +10,8 @@ module Data.HroqQueue
   , dequeue
   , peek
 
+  , getSid
+
   , startQueue
 
   , WorkerFunc
@@ -34,9 +36,13 @@ import Data.HroqStatsGatherer
 import Data.HroqUtil
 import Data.List
 import Data.Typeable (Typeable)
+import GHC.Generics
+import System.Directory
+import System.IO
+import System.IO.Error
+import qualified Data.ByteString.Lazy.Char8 as B
 import qualified Data.HroqMnesia as HM
 import qualified Data.Map as Map
-import GHC.Generics
 
 import qualified System.Remote.Monitoring as EKG
 
@@ -45,8 +51,8 @@ import qualified System.Remote.Monitoring as EKG
 --------------------------------------------------------------------------------
 
 -- |Add an item to a queue
-enqueue :: QName -> QValue -> Process ()
-enqueue q v = mycall q (Enqueue q v)
+enqueue :: ProcessId -> QName -> QValue -> Process ()
+enqueue pid q v = call pid (Enqueue q v)
 
 enqueueCast :: ProcessId -> QName -> QValue -> Process ()
 enqueueCast sid q v = cast sid (Enqueue q v)
@@ -92,6 +98,9 @@ startQueue initParams@(qname,_,_,_) = do
 --------------------------------------------------------------------------------
 -- Types                                                                      --
 --------------------------------------------------------------------------------
+
+mFLUSH_INTERVAL_MS :: Delay
+mFLUSH_INTERVAL_MS = Delay $ milliSeconds 5000
 
 -- Call and Cast request types. Response types are unnecessary as the GenProcess
 -- API uses the Async API, which in turn guarantees that an async handle can
@@ -141,7 +150,9 @@ data State = QueueState
    , qsSubscriberPidDict  :: !(Map.Map ProcessId MonitorRef)
    , qsMnesiaSid          :: !ProcessId
    , qsHandlePoolPid      :: !ProcessId
+   , qsStatsPid           :: !ProcessId
    , qsEkg                :: !EKG.Server
+   , qsFileHandles        :: !(Map.Map FilePath Handle)
    }
 
 {-
@@ -192,11 +203,13 @@ initFunc (queueName,appInfo,doCleanup,ekg) = do
 
     -- process_flag(trap_exit, true),
 
+    mpid <- HM.getSid
+
     HM.wait_for_tables [hroq_queue_meta_table] Infinity
     logm $ "HroqQueue:initFunc 1"
 
     -- Run through the control table & delete all empty buckets ...
-    (queueSize,buckets) <- check_buckets queueName
+    (queueSize,buckets) <- check_buckets mpid queueName
     logm $ "HroqQueue:initFunc 2:(queueSize,buckets)=" ++ (show (queueSize,buckets))
 
     -- ok = mnesia:wait_for_tables(Buckets, infinity),
@@ -221,6 +234,7 @@ initFunc (queueName,appInfo,doCleanup,ekg) = do
 
     mnesiaSid <- HM.getSid
     handlePoolPid <- hroq_handle_pool_server_pid
+    statsPid <- hroq_stats_gatherer_pid
     let s = QueueState
              { qsAppInfo            = appInfo
              , qsCurrProcBucket     = currProcBucket
@@ -235,7 +249,9 @@ initFunc (queueName,appInfo,doCleanup,ekg) = do
              , qsSubscriberPidDict  = Map.empty
              , qsMnesiaSid          = mnesiaSid
              , qsHandlePoolPid      = handlePoolPid
+             , qsStatsPid           = statsPid
              , qsEkg                = ekg
+             , qsFileHandles        = Map.empty
              }
 
 
@@ -244,11 +260,11 @@ initFunc (queueName,appInfo,doCleanup,ekg) = do
     logm $ "HroqQueue:initFunc 6"
 
     -- catch(eroq_stats_gatherer:publish_queue_stats(QueueName, {AppInfo, QueueSize, 0, 0})),
-    publish_queue_stats queueName (QStats appInfo queueSize 0 0)
+    publish_queue_stats statsPid queueName (QStats appInfo queueSize 0 0)
 
     logm $ "HroqQueue:initFunc ending"
 
-    return $ InitOk s Infinity
+    return $ InitOk s mFLUSH_INTERVAL_MS
 
 
 -- ---------------------------------------------------------------------
@@ -276,28 +292,28 @@ check_buckets(QueueName) ->
         end
     end.
 -}
-check_buckets :: QName -> Process (Integer,[TableName])
-check_buckets queueName = do
+check_buckets :: ProcessId -> QName -> Process (Integer,[TableName])
+check_buckets mpid queueName = do
   logm $ "check_buckets:" ++ (show queueName)
   mab <- meta_all_buckets queueName
   logm $ " check_buckets:mab=" ++ (show mab)
   case mab of
     [b] -> do
       logm $ "check_buckets: one only:" ++ (show b)
-      HM.TIStorageType storage <- HM.table_info b HM.TableInfoStorageType
+      HM.TIStorageType storage <- HM.table_info mpid b HM.TableInfoStorageType
       case storage of
         HM.DiscCopies -> do
-            (HM.TISize size) <- HM.table_info b HM.TableInfoSize
+            (HM.TISize size) <- HM.table_info mpid b HM.TableInfoSize
             return (size,[b])
         HM.DiscOnlyCopies -> do
-            (HM.TISize size) <- HM.table_info b HM.TableInfoSize
+            (HM.TISize size) <- HM.table_info mpid b HM.TableInfoSize
             return (size,[b])
         HM.StorageNone -> do
             nb <- make_next_bucket queueName
             return (0,[nb])
     bs -> do
       logm $ "check_buckets: multi(or none):" ++ (show bs)
-      size <- traverse_check_buckets queueName bs 0
+      size <- traverse_check_buckets mpid queueName bs 0
       -- Must re-read, traverse_check_buckets may delete empty ones
       mab' <- meta_all_buckets queueName
       logm $ " check_buckets:mab'=" ++ (show mab')
@@ -327,17 +343,17 @@ traverse_check_buckets(QueueName, [B | T], Size)->
 traverse_check_buckets(_, [], Size)-> Size.
 -}
 
-traverse_check_buckets :: QName -> [TableName] -> Integer -> Process Integer
-traverse_check_buckets _            [] size = return size
-traverse_check_buckets queueName (b:t) size = do
-  HM.TISize s <- HM.table_info b HM.TableInfoSize
+traverse_check_buckets :: ProcessId -> QName -> [TableName] -> Integer -> Process Integer
+traverse_check_buckets _   _            []  size = return size
+traverse_check_buckets mpid queueName (b:t) size = do
+  HM.TISize s <- HM.table_info mpid b HM.TableInfoSize
   case s of
     0 -> do
           HM.delete_table b
           meta_del_bucket queueName b
           return ()
     _ -> return ()
-  traverse_check_buckets queueName t (size + s)
+  traverse_check_buckets mpid queueName t (size + s)
 
 
 --------------------------------------------------------------------------------
@@ -357,8 +373,8 @@ serverDefinition = defaultProcess {
         -- handleInfo_ (\(ProcessMonitorNotification _ _ r) -> logm $ show r >> continue_)
          handleInfo (\dict (ProcessMonitorNotification _ _ r) -> do {logm $ show r; continue dict })
         ]
-     , timeoutHandler = \_ _ -> stop $ ExitOther "timeout az"
-     , shutdownHandler = \_ reason -> do { logm $ "HroqQueue terminateHandler:" ++ (show reason) }
+     , timeoutHandler = handleTimeout
+     , shutdownHandler = handleShutdown
     } :: ProcessDefinition State
 
 handleReadOp :: State -> ReadOp -> Process (ProcessReply ReadOpReply State)
@@ -375,7 +391,7 @@ handleEnqueue :: State -> Enqueue -> Process (ProcessReply () State)
 handleEnqueue s (Enqueue q v) = do
     -- logm $ "enqueue called with:" ++ (show (q,v))
     logt $ "handleEnqueue starting"
-    s' <- enqueue_one_message q v s
+    s' <- enqueue_one_message (qsMnesiaSid s) q v s
 
     -- Notify all waiting processes that a new message has arrived
 
@@ -391,7 +407,7 @@ handleEnqueueCast :: State -> Enqueue -> Process (ProcessAction State)
 handleEnqueueCast s (Enqueue q v) = do
     -- logm $ "enqueue called with:" ++ (show (q,v))
     logt $ "handleEnqueueCast starting"
-    s' <- enqueue_one_message q v s
+    s' <- enqueue_one_message (qsMnesiaSid s) q v s
     logt $ "handleEnqueueCast done"
     continue s'
 
@@ -409,8 +425,8 @@ handle_call({enqueue, QueueName, Message}, From, ServerState)->
 -- ---------------------------------------------------------------------
 -- Actual workers, not just handlers
 
-enqueue_one_message :: QName -> QValue -> State -> Process State
-enqueue_one_message queueName v s = do
+enqueue_one_message :: ProcessId -> QName -> QValue -> State -> Process State
+enqueue_one_message mpid queueName v s = do
   key <- generate_key
   -- logm $ "enqueue_one_message:key=" ++ (show key)
   let msgRecord = QE key v
@@ -424,7 +440,7 @@ enqueue_one_message queueName v s = do
 
   -- logm $ "enqueue_one_message:(procBucket,overflowBucket)=" ++ (show (procBucket,overflowBucket))
 
-  HM.TISize bucketSize <- HM.table_info overflowBucket HM.TableInfoSize
+  HM.TISize bucketSize <- HM.table_info mpid overflowBucket HM.TableInfoSize
   -- logm $ "enqueue_one_message:bucketSize=" ++ (show bucketSize)
 
   logt $ "enqueue_one_message 1"
@@ -440,7 +456,17 @@ enqueue_one_message queueName v s = do
 
   -- HM.dirty_write_q enqueueWorkBucket msgRecord
   -- HM.dirty_write_q_sid (qsMnesiaSid s)  enqueueWorkBucket msgRecord
-  append (qsHandlePoolPid s) (HM.tableNameToFileName enqueueWorkBucket) (encode msgRecord)
+
+  -- append (qsHandlePoolPid s) (HM.tableNameToFileName enqueueWorkBucket) (encode msgRecord)
+
+  (h,newHandleMap) <- case Map.lookup (HM.tableNameToFileName enqueueWorkBucket) (qsFileHandles s) of
+    Just ha -> return (ha,qsFileHandles s)
+    Nothing -> do
+      ha <- liftIO $ safeOpenFile (HM.tableNameToFileName enqueueWorkBucket) AppendMode
+      let fh = Map.insert (HM.tableNameToFileName enqueueWorkBucket) ha (qsFileHandles s)
+      return (ha,fh)
+
+  liftIO $ B.hPut h (encode msgRecord) -- >> hFlush h
 
   let newTotalQueuedMsg = (qsTotalQueueSize s) + 1
       newEnqueueCount   = (qsEnqueueCount s)   + 1
@@ -486,9 +512,9 @@ enqueue_one_message queueName v s = do
                             , qsEnqueueCount       = newEnqueueCount
                             }
 
-  publish_queue_stats queueName (QStats appInfo newTotalQueuedMsg newEnqueueCount dequeueCount)
+  publish_queue_stats (qsStatsPid s) queueName (QStats appInfo newTotalQueuedMsg newEnqueueCount dequeueCount)
 
-  return s'
+  return s' { qsFileHandles = newHandleMap }
 
 
 -- ---------------------------------------------------------------------
@@ -617,7 +643,7 @@ handle_call({read, Action}, _From,  #eroq_queue_state{total_queue_size = Qs} = S
                           return (nextBucket, sort indexList)
                     _ -> do return (procBucket,t)
 
-                publish_queue_stats queueName (QStats appInfo newTotalQueuedMsg enqueueCount newDequeueCount)
+                publish_queue_stats (qsStatsPid s) queueName (QStats appInfo newTotalQueuedMsg enqueueCount newDequeueCount)
 
                 let s' = s { qsCurrProcBucket = newProcBucket
                            , qsIndexList      = newIndexList
@@ -762,3 +788,15 @@ create_table storage tableName = do
   -- logm "HroqQueue.create_table:not checking storage type"
 
 -- ---------------------------------------------------------------------
+
+handleTimeout :: TimeoutHandler State
+handleTimeout st currDelay = do
+  logm $ "HroqQueue:handleTimeout entered"
+  mapM_ (\h -> liftIO $ hClose h) $ Map.elems (qsFileHandles st)
+  timeoutAfter currDelay (st {qsFileHandles = Map.empty })
+
+handleShutdown :: ShutdownHandler State
+handleShutdown st reason = do
+  logm $ "HroqQueue:handleShutdown entered,reason=" ++ show reason
+  mapM_ (\h -> liftIO $ hClose h) $ Map.elems (qsFileHandles st)
+  return ()

@@ -13,12 +13,14 @@ import Data.Hroq
 import Data.HroqMnesia
 -- import Data.Time.Clock
 import Data.Thyme.Clock
+import System.IO.Unsafe
 
 -- ---------------------------------------------------------------------
 
 generate_key :: Process QKey
 generate_key = do
-  k <- liftIO $ getCurrentTime
+  -- k <- liftIO $ getCurrentTime
+  let k = unsafePerformIO $ getCurrentTime
   return $ QK (show k)
 
 -- ---------------------------------------------------------------------

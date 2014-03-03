@@ -7,6 +7,7 @@ module Data.HroqAlarmServer
   -- * Starting the server
     hroq_alarm_server
   , hroq_alarm_server_closure
+  , hroq_alarm_server_pid
 
   -- * API
   , check
@@ -87,6 +88,7 @@ data State = ST { stLastCheck :: UTCTime
                 , stStatsHistory :: StatsDict
                 , stCallbackFun :: Alarms -> Process ()
                 , stTriggers :: [AlarmTrigger]
+                , stStatsPid :: ProcessId
                 }
 
 -- | For each queue, keep track of /* last size, */ dequeueCount and timestamp
@@ -98,10 +100,10 @@ type Internal = (String,QName,Integer,Integer)
 
 noopFun _ = return ()
 
-emptyState :: State
+emptyState :: ProcessId -> State
 -- emptyState = ST (UTCTime (fromGregorian 1900 0 0) 0) Map.empty noopFun []
 -- emptyState = ST (fromSeconds 0) Map.empty noopFun []
-emptyState = ST dayZero Map.empty noopFun []
+emptyState statsPid = ST dayZero Map.empty noopFun [] statsPid
 
 dayZero :: UTCTime
 dayZero = mkUTCTime (fromGregorian 0 0 0) (fromSeconds 0)
@@ -150,6 +152,9 @@ data ParamType = Static | MaxSize
 hroq_alarm_server :: Process ()
 hroq_alarm_server = start_alarm_server
 
+hroq_alarm_server_pid :: Process ProcessId
+hroq_alarm_server_pid = getServerPid
+
 --------------------------------------------------------------------------------
 -- API                                                                        --
 --------------------------------------------------------------------------------
@@ -161,9 +166,9 @@ check() ->
     gen_server:call(?MODULE, check, infinity).
 -}
 
-check :: Process Delay
-check = do
-  pid <- getServerPid
+check :: ProcessId -> Process Delay
+check pid = do
+  -- pid <- getServerPid
   call pid Check
 
 -- -------------------------------------
@@ -172,9 +177,9 @@ check = do
 triggers() ->
     gen_server:call(?MODULE, triggers, infinity).
 -}
-triggers :: Process [AlarmTrigger]
-triggers = do
-  pid <- getServerPid
+triggers :: ProcessId -> Process [AlarmTrigger]
+triggers pid = do
+  -- pid <- getServerPid
   call pid Triggers
 
 
@@ -212,11 +217,12 @@ start_alarm_server = do
   logm $ "HroqAlarmServer:start_alarm_server entered"
   self <- getSelfPid
   register hroqAlarmSrverProcessName self
-  serve 0 initFunc serverDefinition
-  where initFunc :: InitHandler Integer State
-        initFunc i = do
+  statsPid <- hroq_stats_gatherer_pid
+  serve statsPid initFunc serverDefinition
+  where initFunc :: InitHandler ProcessId State
+        initFunc statsPid = do
           logm $ "HroqAlarmServer:start.initFunc"
-          return $ InitOk emptyState mONITOR_INTERVAL_MS
+          return $ InitOk (emptyState statsPid) mONITOR_INTERVAL_MS
 
 serverDefinition :: ProcessDefinition State
 serverDefinition = defaultProcess {
@@ -379,7 +385,7 @@ do_alarm_processing st = do
       h e = do
         logm $ "HroqAlarmServer: traverse_get_queue_stats e:" ++ show e
         return []
-  queueStats <- catch (traverse_get_queue_stats qs []) h
+  queueStats <- catch (traverse_get_queue_stats (stStatsPid st) qs []) h
   -- logm $ "HroqAlarmServer:do_alarm_processing got stats:" ++ show queueStats
 
   -- TODO: use something like dyre to look this up
@@ -449,19 +455,19 @@ traverse_get_queue_stats([QueueName | T], Acc0)->
 traverse_get_queue_stats([], Acc)-> Acc.
 -}
 
-traverse_get_queue_stats :: [QName] -> [Internal] -> Process [Internal]
-traverse_get_queue_stats (queueName:t) acc0 = do
+traverse_get_queue_stats :: ProcessId -> [QName] -> [Internal] -> Process [Internal]
+traverse_get_queue_stats statsPid (queueName:t) acc0 = do
   let handler :: SomeException -> Process [Internal]
       handler _ = return acc0
 
       getter :: QName -> Process [(String,QName,Integer,Integer)]
       getter q = do
-        ReplyQStats (QStats appInfo queueSize _ deqCount) <- get_queue_stats q
+        ReplyQStats (QStats appInfo queueSize _ deqCount) <- get_queue_stats statsPid q
         return $ (appInfo,queueName, queueSize, deqCount) : acc0
 
   acc1 <- catch (getter queueName) handler
-  traverse_get_queue_stats t acc1
-traverse_get_queue_stats [] acc = return acc
+  traverse_get_queue_stats statsPid t acc1
+traverse_get_queue_stats _ [] acc = return acc
 
 -- ---------------------------------------------------------------------
 {-

@@ -18,6 +18,7 @@ module Data.HroqHandlePool
 
   -- * Debug
   , ping
+  , safeOpenFile
 
   -- * Remote Table
   , Data.HroqHandlePool.__remoteTable
@@ -89,7 +90,6 @@ emptyState = ST Map.empty
 --------------------------------------------------------------------------------
 -- API                                                                        --
 --------------------------------------------------------------------------------
-
 
 hroq_handle_pool_server :: Process ()
 hroq_handle_pool_server = do

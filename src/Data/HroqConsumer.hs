@@ -75,7 +75,9 @@ get_state :: ProcessId -> Process State
 get_state pid = call pid GetState
 
 -- ConsumerName, AppInfo, SrcQueue, DlqQueue, WorkerModule, WorkerFunc, WorkerParams, State, DoCleanup
-startConsumer :: (ConsumerName,String,QName,QName,ConsumerFuncClosure,AppParams,String,String,ConsumerState,Bool,EKG.Server) -> Process ProcessId
+startConsumer
+  :: (ConsumerName,String,QName,QName,ConsumerFuncClosure,AppParams,String,String,ConsumerState,Bool,EKG.Server)
+  -> Process ProcessId
 startConsumer initParams@(consumerName,_,_,_,_,_,_,_,_,_,_) = do
   let server = serverDefinition
   sid <- spawnLocal $ serve initParams initFunc server >> return ()
@@ -112,9 +114,8 @@ mycast consumerName op = do
 -- |Init callback
 -- [ConsumerName, AppInfo, SrcQueue, DlqQueue, WorkerModule, ConsumerFunc, WorkerParams, InfoModule, InfoFunc, State, DoCleanup]
 initFunc :: InitHandler (ConsumerName,String,QName,QName,ConsumerFuncClosure,AppParams,String,String,ConsumerState,Bool,EKG.Server) State
-initFunc (consumerName,appInfo,srcQueue,dlqQueue,worker,appParams,infoModule,infoFunc,state,doCleanup,ekg) = do
+initFunc (consumerName,appInfo,srcQueue,dlqQueue,worker,appParams,_infoModule,_infoFunc,statei,doCleanup,_ekg) = do
     logm $ "HroqConsumer:initFunc starting"
-
 
     -- process_flag(trap_exit, true),
 
@@ -128,7 +129,7 @@ initFunc (consumerName,appInfo,srcQueue,dlqQueue,worker,appParams,infoModule,inf
 -}
     -- TODO: populate environment with the other required params
     -- f <- unClosure worker
-    let f = worker_entry consumerName cPid state appParams
+    let f = worker_entry consumerName cPid statei appParams
 
     -- ok = mnesia:wait_for_tables([eroq_consumer_local_storage_table], infinity),
     HM.wait_for_tables [hroq_consumer_local_storage_table] Infinity
@@ -163,7 +164,7 @@ initFunc (consumerName,appInfo,srcQueue,dlqQueue,worker,appParams,infoModule,inf
              , csInfoFunc           = "csInfoFunc"
              , csDoCleanup          = doCleanup
              , csWorkerPid          = pid
-             , csState              = state
+             , csState              = statei
              , csSrcQueueEmptyCount = 0
              , csProcessedCount     = 0
              , csErrorCount         = 0
@@ -178,7 +179,7 @@ initFunc (consumerName,appInfo,srcQueue,dlqQueue,worker,appParams,infoModule,inf
 -- ---------------------------------------------------------------------
 -- | Promote a function to a monad, scanning the monadic arguments from
 -- left to right (cf. 'liftM2').
-liftM13  :: (Monad m) => (a1 -> a2 -> a3 -> a4 -> a5 -> a6 -> a7 -> a8 -> a9 -> a10 -> a11 -> a12 -> a13 -> r) 
+liftM13  :: (Monad m) => (a1 -> a2 -> a3 -> a4 -> a5 -> a6 -> a7 -> a8 -> a9 -> a10 -> a11 -> a12 -> a13 -> r)
             -> m a1 -> m a2 -> m a3 -> m a4 -> m a5 -> m a6 -> m a7 -> m a8 -> m a9 -> m a10 -> m a11 -> m a12 -> m a13 -> m r
 liftM13 f m1 m2 m3 m4 m5 m6 m7 m8 m9 m10 m11 m12 m13 = do
   { x1 <- m1; x2 <- m2; x3 <- m3; x4 <- m4; x5 <- m5; x6 <- m6;

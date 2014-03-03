@@ -31,6 +31,7 @@ import Control.Exception hiding (try,catch)
 import Data.Binary
 import Data.HroqLogger
 import Data.HroqQueueWatch
+import Data.HroqStatsGatherer hiding (ping)
 import Data.Typeable (Typeable)
 import GHC.Generics
 import System.Environment
@@ -85,10 +86,10 @@ instance Binary Ping where
 
 -- type CallbackFun = (String -> Process ())
 
-data State = ST (String -> Process ())
+data State = ST (String -> Process ()) ProcessId
 
-emptyState :: State
-emptyState = ST noopFun
+emptyState :: ProcessId -> State
+emptyState pid = ST noopFun pid
 
 noopFun :: (String -> Process ())
 noopFun str = do
@@ -146,11 +147,12 @@ start_queue_watch_server callbackFun = do
 
   self <- getSelfPid
   register hroqQueueWatchServerProcessName self
-  serve fun initFunc serverDefinition
-  where initFunc :: InitHandler (String -> Process ()) State
-        initFunc fun = do
+  pid <- hroq_stats_gatherer_pid
+  serve (fun,pid) initFunc serverDefinition
+  where initFunc :: InitHandler (String -> Process (),ProcessId) State
+        initFunc (fun,statsPid) = do
           logm $ "HroqQueueWatchServer:start.initFunc"
-          return $ InitOk (ST fun) mONITOR_INTERVAL_MS
+          return $ InitOk (ST fun statsPid) mONITOR_INTERVAL_MS
 
 serverDefinition :: ProcessDefinition State
 serverDefinition = defaultProcess {
@@ -209,7 +211,7 @@ handle_info(timeout, {CallbackFun}) ->
 -}
 
 handleTimeout :: TimeoutHandler State
-handleTimeout st@(ST callbackFun) currDelay = do
+handleTimeout st@(ST callbackFun statsPid) currDelay = do
   logt $ "HroqQueueWatchServer:handleTimeout entered"
 
   -- TODO: use something like dyre to look this up
@@ -225,7 +227,7 @@ handleTimeout st@(ST callbackFun) currDelay = do
         return ()
 
       worker = do
-        qwString <- queue_watch qwConfig
+        qwString <- queue_watch statsPid qwConfig
         callbackFun qwString
 
   catch (worker) handler
