@@ -4,23 +4,23 @@
 module Data.Concurrent.Queue.Roq.Mnesia
   (
   -- * Schema etc
-    create_schema
-  , delete_schema
-  , create_table
+    -- create_schema
+  -- , delete_schema
+    create_table
   , delete_table
 
   , TableStorage(..)
-  -- , Storable(..)
+
   , change_table_copy_type
   , dirty_write
   , dirty_write_q
   , dirty_write_q_sid
-  -- , dirty_write_ls
+
   , dirty_read
   , dirty_read_q
-  -- , dirty_read_ls
+
   , dirty_delete_q
-  -- , dirty_delete_ls
+
   , dirty_all_keys
   , wait_for_tables
 
@@ -205,6 +205,7 @@ data State = MnesiaState
   , sRamQ      :: !(Map.Map TableName [QEntry])
   , sRamMeta   :: !(Map.Map TableName [Meta])
   , sEkg       :: !EKG.Server
+  , sHpPid     :: !(Maybe ProcessId)
   } deriving (Show,Typeable,Generic)
 
 instance Show EKG.Server where
@@ -427,7 +428,7 @@ startHroqMnesia initParams = do
 -- init callback
 initFunc :: InitHandler EKG.Server State
 initFunc ekg = do
-  let s = (MnesiaState Map.empty Map.empty Map.empty ekg)
+  let s = (MnesiaState Map.empty Map.empty Map.empty ekg Nothing)
   ems <- liftIO $ Exception.try $ decodeFileSchema (tableNameToFileName schemaTable)
   logm $ "HroqMnesia.initFunc:ems=" ++ (show ems)
   let m = case ems of
@@ -736,11 +737,14 @@ do_dirty_write_q s tableName record = do
 
   -- logm $ "HroqMnesia.not doing physical write" -- ++AZ++
   -- liftIO $ defaultAppend (tableNameToFileName tableName) (encode record)
-  hsid <- hroq_handle_pool_server_pid -- TODO: cache this in State
-  append hsid (tableNameToFileName tableName) (encode record)
+  hpid <- case (sHpPid s) of
+    Just p -> return p
+    Nothing -> hroq_handle_pool_server_pid
+
+  append hpid (tableNameToFileName tableName) (encode record)
 
   let s' = insertEntryQ s tableName record
-  return s'
+  return s' { sHpPid = Just hpid }
 
 {-
 do_dirty_write_ls ::

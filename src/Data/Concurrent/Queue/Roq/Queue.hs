@@ -455,8 +455,8 @@ enqueue_one_message mpid queueName v s = do
   logt $ "enqueue_one_message 2"
 
   -- HM.dirty_write_q enqueueWorkBucket msgRecord
-  -- HM.dirty_write_q_sid (qsMnesiaSid s)  enqueueWorkBucket msgRecord
-
+  HM.dirty_write_q_sid (qsMnesiaSid s)  enqueueWorkBucket msgRecord
+{-
   -- append (qsHandlePoolPid s) (HM.tableNameToFileName enqueueWorkBucket) (encode msgRecord)
 
   (h,newHandleMap) <- case Map.lookup (HM.tableNameToFileName enqueueWorkBucket) (qsFileHandles s) of
@@ -467,6 +467,7 @@ enqueue_one_message mpid queueName v s = do
       return (ha,fh)
 
   liftIO $ B.hPut h (encode msgRecord) -- >> hFlush h
+-}
 
   let newTotalQueuedMsg = (qsTotalQueueSize s) + 1
       newEnqueueCount   = (qsEnqueueCount s)   + 1
@@ -514,7 +515,7 @@ enqueue_one_message mpid queueName v s = do
 
   publish_queue_stats (qsStatsPid s) queueName (QStats appInfo newTotalQueuedMsg newEnqueueCount dequeueCount)
 
-  return s' { qsFileHandles = newHandleMap }
+  return s' -- { qsFileHandles = newHandleMap }
 
 
 -- ---------------------------------------------------------------------

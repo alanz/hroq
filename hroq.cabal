@@ -73,6 +73,7 @@ executable hroq
                        , thyme
                        , vector-space
                        , lens
+                       , sqlite-simple
 
 test-suite StatsGathererTests
   type:            exitcode-stdio-1.0
@@ -99,6 +100,7 @@ test-suite StatsGathererTests
                    , thyme
                    , vector-space
                    , lens
+                   , sqlite-simple
   hs-source-dirs:
                    tests src
   ghc-options:     -Wall -threaded -rtsopts -with-rtsopts=-N
@@ -133,6 +135,7 @@ test-suite AlarmServerTests
                    , thyme
                    , vector-space
                    , lens
+                   , sqlite-simple
   hs-source-dirs:
                    tests src
   ghc-options:     -Wall -threaded -rtsopts -with-rtsopts=-N

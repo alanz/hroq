@@ -45,21 +45,21 @@ logm = say
 -- ---------------------------------------------------------------------
 
 testQueueStats :: ProcessId -> TestResult Int -> Process ()
-testQueueStats _pid result = do
-  SG.ReplyQStatsNotFound <- SG.get_queue_stats (QN "queue1")
-  SG.publish_queue_stats (QN "queue1") (SG.QStats "info" 1 2 3)
-  SG.publish_queue_stats (QN "queue2") (SG.QStats "info" 2 3 4)
-  (SG.ReplyQStats (SG.QStats "info" 1 2 3)) <- SG.get_queue_stats (QN "queue1")
+testQueueStats pid result = do
+  SG.ReplyQStatsNotFound <- SG.get_queue_stats pid (QN "queue1")
+  SG.publish_queue_stats pid (QN "queue1") (SG.QStats "info" 1 2 3)
+  SG.publish_queue_stats pid (QN "queue2") (SG.QStats "info" 2 3 4)
+  (SG.ReplyQStats (SG.QStats "info" 1 2 3)) <- SG.get_queue_stats pid (QN "queue1")
   stash result 5
 
 -- ---------------------------------------------------------------------
 
 testConsumerStats :: ProcessId -> TestResult Int -> Process ()
-testConsumerStats _pid result = do
-  SG.ReplyCStatsNotFound <- SG.get_consumer_stats (CN "consumer1")
-  SG.publish_consumer_stats (CN "consumer1") (SG.QStats "info" 1 2 3)
-  SG.publish_consumer_stats (CN "consumer2") (SG.QStats "info" 2 3 4)
-  (SG.ReplyCStats (SG.QStats "info" 1 2 3)) <- SG.get_consumer_stats (CN "consumer1")
+testConsumerStats pid result = do
+  SG.ReplyCStatsNotFound <- SG.get_consumer_stats pid (CN "consumer1")
+  SG.publish_consumer_stats pid (CN "consumer1") (SG.QStats "info" 1 2 3)
+  SG.publish_consumer_stats pid (CN "consumer2") (SG.QStats "info" 2 3 4)
+  (SG.ReplyCStats (SG.QStats "info" 1 2 3)) <- SG.get_consumer_stats pid (CN "consumer1")
   stash result 5
 
 -- --------------------------------------------------------------------
