@@ -18,9 +18,9 @@ import Control.Distributed.Process.Serializable()
 import Control.Distributed.Process.Platform.Timer
 
 
-import Data.Hroq
-import qualified Data.HroqStatsGatherer as SG
-import qualified Data.HroqGroups as G
+import Data.Concurrent.Queue.Roq.Hroq
+import qualified Data.Concurrent.Queue.Roq.StatsGatherer as SG
+import qualified Data.Concurrent.Queue.Roq.Groups as G
 
 #if ! MIN_VERSION_base(4,6,0)
 import Prelude hiding (catch)

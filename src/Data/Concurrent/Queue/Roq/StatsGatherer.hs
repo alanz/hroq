@@ -1,7 +1,7 @@
 {-# LANGUAGE TemplateHaskell      #-}
 {-# LANGUAGE DeriveDataTypeable   #-}
 {-# LANGUAGE DeriveGeneric        #-}
-module Data.HroqStatsGatherer
+module Data.Concurrent.Queue.Roq.StatsGatherer
   (
   -- * Starting the server
     hroq_stats_gatherer
@@ -37,8 +37,8 @@ import Control.Distributed.Process.Serializable()
 import Data.Binary
 import Data.Typeable (Typeable)
 import qualified Data.Map as Map
-import Data.Hroq
-import Data.HroqLogger
+import Data.Concurrent.Queue.Roq.Hroq
+import Data.Concurrent.Queue.Roq.Logger
 import GHC.Generics
 
 

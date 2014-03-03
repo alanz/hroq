@@ -3,7 +3,7 @@
 {-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE TemplateHaskell      #-}
 {-# LANGUAGE TypeSynonymInstances #-}
-module Data.HroqQueue
+module Data.Concurrent.Queue.Roq.Queue
   (
     enqueue
   , enqueueCast
@@ -27,13 +27,13 @@ import Control.Distributed.Process.Platform hiding (monitor)
 import Control.Distributed.Process.Platform.ManagedProcess hiding (runProcess)
 import Control.Distributed.Process.Platform.Time
 import Data.Binary
-import Data.Hroq
-import Data.HroqGroups
-import Data.HroqHandlePool
-import Data.HroqLogger
-import Data.HroqQueueMeta
-import Data.HroqStatsGatherer
-import Data.HroqUtil
+import Data.Concurrent.Queue.Roq.Hroq
+import Data.Concurrent.Queue.Roq.Groups
+import Data.Concurrent.Queue.Roq.HandlePool
+import Data.Concurrent.Queue.Roq.Logger
+import Data.Concurrent.Queue.Roq.QueueMeta
+import Data.Concurrent.Queue.Roq.StatsGatherer
+import Data.Concurrent.Queue.Roq.Util
 import Data.List
 import Data.Typeable (Typeable)
 import GHC.Generics
@@ -41,7 +41,7 @@ import System.Directory
 import System.IO
 import System.IO.Error
 import qualified Data.ByteString.Lazy.Char8 as B
-import qualified Data.HroqMnesia as HM
+import qualified Data.Concurrent.Queue.Roq.Mnesia as HM
 import qualified Data.Map as Map
 
 import qualified System.Remote.Monitoring as EKG
@@ -203,7 +203,7 @@ initFunc (queueName,appInfo,doCleanup,ekg) = do
 
     -- process_flag(trap_exit, true),
 
-    mpid <- HM.getSid
+    mpid <- HM.getPid
 
     HM.wait_for_tables [hroq_queue_meta_table] Infinity
     logm $ "HroqQueue:initFunc 1"
@@ -232,7 +232,7 @@ initFunc (queueName,appInfo,doCleanup,ekg) = do
     allKeys <- HM.dirty_all_keys currProcBucket
     logm $ "HroqQueue:initFunc 5"
 
-    mnesiaSid <- HM.getSid
+    mnesiaSid <- HM.getPid
     handlePoolPid <- hroq_handle_pool_server_pid
     statsPid <- hroq_stats_gatherer_pid
     let s = QueueState

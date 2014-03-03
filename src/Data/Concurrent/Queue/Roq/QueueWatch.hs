@@ -1,7 +1,7 @@
 {-# LANGUAGE TemplateHaskell      #-}
 {-# LANGUAGE DeriveDataTypeable   #-}
 {-# LANGUAGE DeriveGeneric        #-}
-module Data.HroqQueueWatch
+module Data.Concurrent.Queue.Roq.QueueWatch
   (
 
   -- * API
@@ -14,7 +14,7 @@ module Data.HroqQueueWatch
   -- , ping
 
   -- * Remote Table
-  -- , Data.HroqQueueWatchServer.__remoteTable
+  -- , Data.Concurrent.Queue.Roq.QueueWatchServer.__remoteTable
 
   ) where
 
@@ -27,10 +27,10 @@ import Control.Distributed.Process.Platform.Time
 import Control.Distributed.Process.Serializable()
 import Control.Exception hiding (try,catch)
 import Data.Binary
-import Data.Hroq
-import Data.HroqGroups
-import Data.HroqLogger
-import Data.HroqStatsGatherer
+import Data.Concurrent.Queue.Roq.Hroq
+import Data.Concurrent.Queue.Roq.Groups
+import Data.Concurrent.Queue.Roq.Logger
+import Data.Concurrent.Queue.Roq.StatsGatherer
 -- import Data.Time.Calendar
 import Data.Thyme.Calendar
 -- import Data.Time.Clock

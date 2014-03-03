@@ -1,6 +1,6 @@
 {-# LANGUAGE DeriveDataTypeable  #-}
 
-module Data.HroqApp
+module Data.Concurrent.Queue.Roq.App
   (
     start_app
   , create_queue_meta_table
@@ -10,12 +10,12 @@ module Data.HroqApp
   where
 
 import Control.Distributed.Process hiding (call)
-import Data.Hroq
-import Data.HroqLogger
-import Data.HroqSup
-import Data.HroqMnesia
-import Data.HroqQueueMeta
-import Data.HroqQueueWatchServer
+import Data.Concurrent.Queue.Roq.Hroq
+import Data.Concurrent.Queue.Roq.Logger
+import Data.Concurrent.Queue.Roq.Sup
+import Data.Concurrent.Queue.Roq.Mnesia
+import Data.Concurrent.Queue.Roq.QueueMeta
+import Data.Concurrent.Queue.Roq.QueueWatchServer
 
 -- ---------------------------------------------------------------------
 {-

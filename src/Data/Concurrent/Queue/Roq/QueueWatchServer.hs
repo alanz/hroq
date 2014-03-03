@@ -1,7 +1,7 @@
 {-# LANGUAGE TemplateHaskell      #-}
 {-# LANGUAGE DeriveDataTypeable   #-}
 {-# LANGUAGE DeriveGeneric        #-}
-module Data.HroqQueueWatchServer
+module Data.Concurrent.Queue.Roq.QueueWatchServer
   (
   -- * Starting the server
     hroq_queue_watch_server
@@ -17,7 +17,7 @@ module Data.HroqQueueWatchServer
   , noopFun
 
   -- * Remote Table
-  , Data.HroqQueueWatchServer.__remoteTable
+  , Data.Concurrent.Queue.Roq.QueueWatchServer.__remoteTable
 
   ) where
 
@@ -29,9 +29,9 @@ import Control.Distributed.Process.Platform.Time
 import Control.Distributed.Process.Serializable()
 import Control.Exception hiding (try,catch)
 import Data.Binary
-import Data.HroqLogger
-import Data.HroqQueueWatch
-import Data.HroqStatsGatherer hiding (ping)
+import Data.Concurrent.Queue.Roq.Logger
+import Data.Concurrent.Queue.Roq.QueueWatch
+import Data.Concurrent.Queue.Roq.StatsGatherer hiding (ping)
 import Data.Typeable (Typeable)
 import GHC.Generics
 import System.Environment

@@ -1,7 +1,7 @@
 {-# LANGUAGE DeriveDataTypeable  #-}
 {-# LANGUAGE DeriveGeneric       #-}
 {-# Language ScopedTypeVariables #-}
-module Data.HroqMnesia
+module Data.Concurrent.Queue.Roq.Mnesia
   (
   -- * Schema etc
     create_schema
@@ -33,7 +33,7 @@ module Data.HroqMnesia
 
 
   , startHroqMnesia
-  , getSid
+  , getPid
 
   -- * debug
   , queueExists
@@ -53,9 +53,9 @@ import Control.Exception as Exception
 import Control.Monad(when,foldM)
 import Data.Binary
 import Data.Binary.Get
-import Data.Hroq
-import Data.HroqHandlePool
-import Data.HroqLogger
+import Data.Concurrent.Queue.Roq.Hroq
+import Data.Concurrent.Queue.Roq.HandlePool
+import Data.Concurrent.Queue.Roq.Logger
 import Data.Int
 import Data.List(elemIndices,isInfixOf,(\\))
 import Data.Maybe(fromMaybe,isNothing)
@@ -447,8 +447,8 @@ schemaTable = TN "hschema"
 
 -- ---------------------------------------------------------------------
 
-getSid :: Process ProcessId
-getSid = do
+getPid :: Process ProcessId
+getPid = do
   -- deliberately blow up if not registered
   Just pid <- whereis hroqMnesiaName
   return pid
@@ -457,7 +457,7 @@ mycall ::
   (Typeable b, Typeable a, Binary b, Binary a)
   => a -> Process b
 mycall op = do
-  sid <- getSid
+  sid <- getPid
   call sid op
 
 -- ---------------------------------------------------------------------

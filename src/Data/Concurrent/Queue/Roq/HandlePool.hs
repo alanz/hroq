@@ -3,7 +3,7 @@
 {-# LANGUAGE DeriveGeneric        #-}
 
 -- | A pool of handles
-module Data.HroqHandlePool
+module Data.Concurrent.Queue.Roq.HandlePool
   (
   -- * Starting the server
     hroq_handle_pool_server
@@ -21,7 +21,7 @@ module Data.HroqHandlePool
   , safeOpenFile
 
   -- * Remote Table
-  , Data.HroqHandlePool.__remoteTable
+  , Data.Concurrent.Queue.Roq.HandlePool.__remoteTable
 
   ) where
 
@@ -33,7 +33,7 @@ import Control.Distributed.Process.Platform.Time
 import Control.Distributed.Process.Serializable()
 import Control.Exception hiding (try,catch)
 import Data.Binary
-import Data.HroqLogger
+import Data.Concurrent.Queue.Roq.Logger
 import Data.List
 import Data.Typeable (Typeable)
 import GHC.Generics

@@ -1,4 +1,4 @@
-module Data.HroqSup
+module Data.Concurrent.Queue.Roq.Sup
   (
   hroq_start_link
   )
@@ -8,12 +8,12 @@ import Control.Distributed.Process hiding (call)
 -- import Control.Distributed.Process.Platform.ManagedProcess hiding (runProcess)
 import Control.Distributed.Process.Platform.Supervisor
 import Control.Distributed.Process.Platform.Time
-import Data.HroqAlarmServer
-import Data.HroqGroups
-import Data.HroqHandlePool
-import Data.HroqLogger
-import Data.HroqStatsGatherer
-import Data.HroqQueueWatchServer
+import Data.Concurrent.Queue.Roq.AlarmServer
+import Data.Concurrent.Queue.Roq.Groups
+import Data.Concurrent.Queue.Roq.HandlePool
+import Data.Concurrent.Queue.Roq.Logger
+import Data.Concurrent.Queue.Roq.StatsGatherer
+import Data.Concurrent.Queue.Roq.QueueWatchServer
 
 -- ---------------------------------------------------------------------
 

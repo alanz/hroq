@@ -2,7 +2,7 @@
 {-# LANGUAGE DeriveDataTypeable   #-}
 {-# LANGUAGE DeriveGeneric        #-}
 
-module Data.HroqGroups
+module Data.Concurrent.Queue.Roq.Groups
   (
   -- * Starting the server
     hroq_groups
@@ -36,8 +36,8 @@ import Control.Distributed.Process.Platform.ManagedProcess hiding (runProcess)
 import Control.Distributed.Process.Platform.Time
 import Data.Binary
 import qualified Data.Map as Map
-import Data.Hroq
-import Data.HroqLogger
+import Data.Concurrent.Queue.Roq.Hroq
+import Data.Concurrent.Queue.Roq.Logger
 import Data.Typeable
 import GHC.Generics
 

@@ -3,7 +3,7 @@
 {-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE ScopedTypeVariables  #-}
 {-# LANGUAGE TypeSynonymInstances #-}
-module Data.HroqConsumer
+module Data.Concurrent.Queue.Roq.Consumer
   (
     pause
   , resume
@@ -25,15 +25,15 @@ import Control.Distributed.Process.Platform.Time hiding (microsecondsToNominalDi
 import Data.AdditiveGroup
 import Data.AffineSpace
 import Data.Binary
-import Data.Hroq
-import Data.HroqApp
-import Data.HroqConsumerTH
-import Data.HroqLogger
-import Data.HroqQueue
+import Data.Concurrent.Queue.Roq.Hroq
+import Data.Concurrent.Queue.Roq.App
+import Data.Concurrent.Queue.Roq.ConsumerTH
+import Data.Concurrent.Queue.Roq.Logger
+import Data.Concurrent.Queue.Roq.Queue
 import Data.Thyme.Clock
 import Data.Typeable hiding (cast)
 import GHC.Generics
-import qualified Data.HroqMnesia as HM
+import qualified Data.Concurrent.Queue.Roq.Mnesia as HM
 
 import qualified System.Remote.Monitoring as EKG
 
@@ -99,14 +99,14 @@ mycall ::
   (Typeable b, Typeable a, Binary b, Binary a)
   => ConsumerName -> a -> Process b
 mycall consumerName op = do
-  sid <- getPid consumerName
+  sid <- Data.Concurrent.Queue.Roq.Consumer.getPid consumerName
   call sid op
 
 mycast ::
   (Typeable a, Binary a)
   => ConsumerName -> a -> Process ()
 mycast consumerName op = do
-  sid <- getPid consumerName
+  sid <- Data.Concurrent.Queue.Roq.Consumer.getPid consumerName
   cast sid op
 
 -- ---------------------------------------------------------------------

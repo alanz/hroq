@@ -1,5 +1,5 @@
 {-# LANGUAGE TemplateHaskell #-}
-module Data.HroqDlqWorkers
+module Data.Concurrent.Queue.Roq.DlqWorkers
   (
     requeue
   , purge
@@ -10,16 +10,16 @@ module Data.HroqDlqWorkers
 
 import Control.Distributed.Process hiding (call)
 import Control.Distributed.Process.Closure
-import Data.Hroq
-import Data.HroqLogger
-import Data.HroqQueue
+import Data.Concurrent.Queue.Roq.Hroq
+import Data.Concurrent.Queue.Roq.Logger
+import Data.Concurrent.Queue.Roq.Queue
 
 -- ---------------------------------------------------------------------
 
 requeuer :: QName -> WorkerFunc
 requeuer destQ entry@(QE _ qv) = do
   logm $ "purger:" ++ (show (destQ,entry))
-  qpid <- Data.HroqQueue.getSid destQ
+  qpid <- Data.Concurrent.Queue.Roq.Queue.getSid destQ
   enqueue qpid destQ qv
   return (Right ())
 

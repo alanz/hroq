@@ -1,4 +1,4 @@
-module Data.HroqUtil
+module Data.Concurrent.Queue.Roq.Util
   (
     generate_key
   , retry_dirty_write
@@ -9,8 +9,8 @@ module Data.HroqUtil
 
 import Prelude -- hiding (catch)
 import Control.Distributed.Process hiding (call)
-import Data.Hroq
-import Data.HroqMnesia
+import Data.Concurrent.Queue.Roq.Hroq
+import Data.Concurrent.Queue.Roq.Mnesia
 -- import Data.Time.Clock
 import Data.Thyme.Clock
 import System.IO.Unsafe

@@ -1,6 +1,6 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 
-module Data.HroqQueueMeta
+module Data.Concurrent.Queue.Roq.QueueMeta
   (
     meta_add_bucket
   , meta_all_buckets
@@ -12,10 +12,10 @@ module Data.HroqQueueMeta
 
 import Control.Distributed.Process hiding (call)
 import Data.List
-import Data.Hroq
-import Data.HroqLogger
-import Data.HroqMnesia
-import Data.HroqUtil
+import Data.Concurrent.Queue.Roq.Hroq
+import Data.Concurrent.Queue.Roq.Logger
+import Data.Concurrent.Queue.Roq.Mnesia
+import Data.Concurrent.Queue.Roq.Util
 
 -- ---------------------------------------------------------------------
 

@@ -1,7 +1,7 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
-module Data.HroqConsumerTH
+module Data.Concurrent.Queue.Roq.ConsumerTH
   (
     acquire_and_store_msg
   , __remoteTable
@@ -10,10 +10,10 @@ module Data.HroqConsumerTH
 
 import Control.Distributed.Process hiding (call)
 import Control.Distributed.Process.Closure
-import Data.Hroq
-import Data.HroqApp
-import Data.HroqLogger
-import qualified Data.HroqMnesia as HM
+import Data.Concurrent.Queue.Roq.Hroq
+import Data.Concurrent.Queue.Roq.App
+import Data.Concurrent.Queue.Roq.Logger
+import qualified Data.Concurrent.Queue.Roq.Mnesia as HM
 
 -- ---------------------------------------------------------------------
 -- acquire_and_store_msg(Key, Msg, {CName, SrcQ}) -> ok = eroq_util:retry_dirty_write(10, eroq_consumer_local_storage_table, #eroq_consumer_message{cid=CName, key = Key, msg = Msg, src_queue = SrcQ, timestamp = now()}).

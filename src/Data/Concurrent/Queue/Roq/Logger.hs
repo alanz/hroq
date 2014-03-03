@@ -1,6 +1,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module Data.HroqLogger
+module Data.Concurrent.Queue.Roq.Logger
   (
     startLoggerProcess
 

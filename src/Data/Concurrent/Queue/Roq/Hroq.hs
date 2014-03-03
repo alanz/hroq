@@ -5,7 +5,7 @@
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE ScopedTypeVariables  #-}
 
-module Data.Hroq
+module Data.Concurrent.Queue.Roq.Hroq
   (
     ConsumerName(..)
   , ConsumerMessage(..)
@@ -46,7 +46,7 @@ import Control.Distributed.Process hiding (call)
 import Control.Lens
 import Data.AffineSpace
 import Data.Binary
-import Data.HroqLogger
+import Data.Concurrent.Queue.Roq.Logger
 import Data.Ratio ((%))
 import Data.RefSerialize
 import Data.Thyme.Calendar

@@ -18,11 +18,11 @@ import Control.Distributed.Process.Serializable()
 import Control.Distributed.Process.Platform.Timer
 
 
-import Data.Hroq
-import qualified Data.HroqStatsGatherer as SG
-import qualified Data.HroqGroups as G
-import qualified Data.HroqAlarmServer as A
-import Data.HroqAlarmServer (__remoteTable)
+import Data.Concurrent.Queue.Roq.Hroq
+import qualified Data.Concurrent.Queue.Roq.StatsGatherer as SG
+import qualified Data.Concurrent.Queue.Roq.Groups as G
+import qualified Data.Concurrent.Queue.Roq.AlarmServer as A
+import Data.Concurrent.Queue.Roq.AlarmServer (__remoteTable)
 
 #if ! MIN_VERSION_base(4,6,0)
 import Prelude hiding (catch)
@@ -172,12 +172,12 @@ tests transport = do
 
 rtable :: RemoteTable
 rtable = Control.Distributed.Process.Platform.__remoteTable
-       $ Data.HroqAlarmServer.__remoteTable
-       -- $ Data.HroqConsumerTH.__remoteTable
-       -- $ Data.HroqDlqWorkers.__remoteTable
-       -- $ Data.HroqGroups.__remoteTable
-       -- $ Data.HroqSampleWorker.__remoteTable
-       -- $ Data.HroqStatsGatherer.__remoteTable
+       $ Data.Concurrent.Queue.Roq.AlarmServer.__remoteTable
+       -- $ Data.Concurrent.Queue.Roq.ConsumerTH.__remoteTable
+       -- $ Data.Concurrent.Queue.Roq.DlqWorkers.__remoteTable
+       -- $ Data.Concurrent.Queue.Roq.Groups.__remoteTable
+       -- $ Data.Concurrent.Queue.Roq.SampleWorker.__remoteTable
+       -- $ Data.Concurrent.Queue.Roq.StatsGatherer.__remoteTable
        $ initRemoteTable
 
 

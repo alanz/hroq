@@ -1,5 +1,5 @@
 {-# LANGUAGE TemplateHaskell #-}
-module Data.HroqSampleWorker
+module Data.Concurrent.Queue.Roq.SampleWorker
   (
     sampleWorker
 
@@ -9,9 +9,9 @@ module Data.HroqSampleWorker
 
 import Control.Distributed.Process hiding (call)
 import Control.Distributed.Process.Closure
-import Data.Hroq
-import qualified Data.HroqConsumer as HC
-import Data.HroqLogger
+import Data.Concurrent.Queue.Roq.Hroq
+import qualified Data.Concurrent.Queue.Roq.Consumer as HC
+import Data.Concurrent.Queue.Roq.Logger
 
 -- ---------------------------------------------------------------------
 

@@ -10,24 +10,24 @@ import Control.Distributed.Process.Platform hiding (send)
 import Control.Distributed.Process.Platform.Time
 import Control.Distributed.Process.Platform.Timer
 import Data.AffineSpace
-import Data.Hroq
-import Data.HroqAlarmServer
-import Data.HroqConsumer
-import Data.HroqConsumerTH
-import Data.HroqDlqWorkers
-import Data.HroqGroups
-import Data.HroqHandlePool
-import Data.HroqLogger
-import Data.HroqMnesia
-import Data.HroqQueue
-import Data.HroqQueueWatchServer
-import Data.HroqSampleWorker
-import Data.HroqStatsGatherer
+import Data.Concurrent.Queue.Roq.Hroq
+import Data.Concurrent.Queue.Roq.AlarmServer
+import Data.Concurrent.Queue.Roq.Consumer
+import Data.Concurrent.Queue.Roq.ConsumerTH
+import Data.Concurrent.Queue.Roq.DlqWorkers
+import Data.Concurrent.Queue.Roq.Groups
+import Data.Concurrent.Queue.Roq.HandlePool
+import Data.Concurrent.Queue.Roq.Logger
+import Data.Concurrent.Queue.Roq.Mnesia
+import Data.Concurrent.Queue.Roq.Queue
+import Data.Concurrent.Queue.Roq.QueueWatchServer
+import Data.Concurrent.Queue.Roq.SampleWorker
+import Data.Concurrent.Queue.Roq.StatsGatherer
 import Data.Thyme.Clock
 import Data.Thyme.Format
 import Network.Transport.TCP (createTransportExposeInternals, defaultTCPParameters)
-import qualified Data.HroqApp as App
-import qualified Data.HroqGroups as G
+import qualified Data.Concurrent.Queue.Roq.App as App
+import qualified Data.Concurrent.Queue.Roq.Groups as G
 import qualified Data.Map as Map
 
 -- https://github.com/tibbe/ekg
@@ -75,7 +75,7 @@ worker_supervised ekg = do
 
   sleepFor 1 Seconds
 
-  Data.HroqQueueWatchServer.ping
+  Data.Concurrent.Queue.Roq.QueueWatchServer.ping
 
   logm $ "starting queue group stuff"
   q1 <- queues
@@ -238,8 +238,8 @@ worker_consumer ekg = do
 
 {-
 %The consumer will call CMod:CFun(Key, Message, CArgs) to process a message on the queue
-CMod = my_worker_mod. 
-CFun = process_message. 
+CMod = my_worker_mod.
+CFun = process_message.
 CArgs = [my_args_any].
 CInitialState = active. %active or paused - the entry state of the consumer
 CDoCleanupAtShutdown = true.
@@ -268,16 +268,16 @@ startConsumer :: (ConsumerName,String,QName,QName,ConsumerFuncClosure,AppParams,
 
   -- mapM_ (\n -> enqueue qSidb qNameB (qval $ "bar" ++ (show n))) [1..51]
 
-  liftIO $ threadDelay (5*1000000) 
+  liftIO $ threadDelay (5*1000000)
   logm "enqueue starting SLAP"
   mapM_ (\n -> enqueue qPid (QN "SLAP") (qval $ "bar" ++ (show n))) [1..8000]
   logm "enqueue done SLAP 1"
 
-  liftIO $ threadDelay (3*1000000) 
+  liftIO $ threadDelay (3*1000000)
   mapM_ (\n -> enqueue qPid (QN "SLAP") (qval $ "baz" ++ (show n))) [1..8000]
   logm "enqueue done SLAP 2"
 
-  liftIO $ threadDelay (3*1000000) 
+  liftIO $ threadDelay (3*1000000)
   mapM_ (\n -> enqueue qPid (QN "SLAP") (qval $ "bat" ++ (show n))) [1..8000]
   logm "enqueue done SLAP 3"
 
@@ -341,7 +341,7 @@ startLocalNode = do
   return node
   where
     rtable :: RemoteTable
-    rtable = Data.HroqDlqWorkers.__remoteTable
+    rtable = Data.Concurrent.Queue.Roq.DlqWorkers.__remoteTable
            $ Control.Distributed.Process.Platform.__remoteTable
            $ initRemoteTable
 -}
@@ -359,14 +359,14 @@ startLocalNode = do
   where
     rtable :: RemoteTable
     rtable = Control.Distributed.Process.Platform.__remoteTable
-           $ Data.HroqAlarmServer.__remoteTable
-           $ Data.HroqConsumerTH.__remoteTable
-           $ Data.HroqDlqWorkers.__remoteTable
-           $ Data.HroqGroups.__remoteTable
-           $ Data.HroqHandlePool.__remoteTable
-           $ Data.HroqQueueWatchServer.__remoteTable
-           $ Data.HroqSampleWorker.__remoteTable
-           $ Data.HroqStatsGatherer.__remoteTable
+           $ Data.Concurrent.Queue.Roq.AlarmServer.__remoteTable
+           $ Data.Concurrent.Queue.Roq.ConsumerTH.__remoteTable
+           $ Data.Concurrent.Queue.Roq.DlqWorkers.__remoteTable
+           $ Data.Concurrent.Queue.Roq.Groups.__remoteTable
+           $ Data.Concurrent.Queue.Roq.HandlePool.__remoteTable
+           $ Data.Concurrent.Queue.Roq.QueueWatchServer.__remoteTable
+           $ Data.Concurrent.Queue.Roq.SampleWorker.__remoteTable
+           $ Data.Concurrent.Queue.Roq.StatsGatherer.__remoteTable
            $ initRemoteTable
 
 

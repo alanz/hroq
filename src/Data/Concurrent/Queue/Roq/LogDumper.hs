@@ -1,4 +1,4 @@
-module Data.HroqLogDumper
+module Data.Concurrent.Queue.Roq.LogDumper
   (
   hroq_log_dumper
   ) where

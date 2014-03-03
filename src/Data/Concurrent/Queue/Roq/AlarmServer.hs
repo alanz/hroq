@@ -2,7 +2,7 @@
 {-# LANGUAGE DeriveDataTypeable   #-}
 {-# LANGUAGE DeriveGeneric        #-}
 {-# LANGUAGE ScopedTypeVariables  #-}
-module Data.HroqAlarmServer
+module Data.Concurrent.Queue.Roq.AlarmServer
   (
   -- * Starting the server
     hroq_alarm_server
@@ -19,7 +19,7 @@ module Data.HroqAlarmServer
 
 
   -- * Remote Table
-  , Data.HroqAlarmServer.__remoteTable
+  , Data.Concurrent.Queue.Roq.AlarmServer.__remoteTable
 
   ) where
 
@@ -34,10 +34,10 @@ import Control.Lens
 import Data.AffineSpace
 import Data.Ratio ((%))
 import Data.Binary
-import Data.Hroq
-import Data.HroqGroups
-import Data.HroqLogger
-import Data.HroqStatsGatherer
+import Data.Concurrent.Queue.Roq.Hroq
+import Data.Concurrent.Queue.Roq.Groups
+import Data.Concurrent.Queue.Roq.Logger
+import Data.Concurrent.Queue.Roq.StatsGatherer
 -- import Data.Time.Calendar
 import Data.Thyme.Calendar
 -- import Data.Time.Clock
